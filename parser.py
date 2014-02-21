@@ -23,14 +23,17 @@ class Parser:
 			'(': self.parse_inner
 		}
 
-	def pos (self):
-		return Position (self.lexer.row, self.lexer.col)
-		
 	def next (self):
 		tok = self.lexer.next ()
 		self.cur = tok
 		return tok
 
+	def accept (self, ex):
+		if self.cur.type == ex:
+			self.next ()
+			return True
+		return False
+		
 	def expect (self, ex):
 		if self.cur.type != ex:
 			raise RuntimeError ("Expected %s, got %s" % (ex, self.cur))
@@ -38,21 +41,51 @@ class Parser:
 	def skip (self, ex):
 		self.expect (ex)
 		self.next ()
-		
-	def rollback (self, pos):
-		self.lexer.pos = pos
-		
-	def parse (self):
-		self.next ()
-		expr = self.parse_add ()
-		self.expect (ttype.EOF)
-		return expr
 
+	def checkpoint (self):
+		return self.lexer.pos, self.cur
+		
+	def rollback (self, cp):
+		self.lexer.pos, self.cur = cp
+		
 	def parse_id (self):
 		self.expect (ttype.ID)
 		val = self.cur.value
 		self.next ()
 		return val
+
+	def parse (self):
+		self.next ()
+		expr = self.parse_seq ()
+		self.expect (ttype.EOF)
+		return expr
+
+	def parse_seq (self):
+		seq = SeqExpr ()
+		expr = self.parse_assign ()
+		if not isinstance(expr, AssignExpr):
+			return expr
+			
+		while self.accept (';'):
+			seq.assigns.append (expr)
+			expr = self.parse_assign ()
+			if not isinstance(expr, AssignExpr):
+				seq.result = expr
+				break
+
+		return seq
+
+	def parse_assign (self):
+		begin = self.checkpoint ()
+		if self.cur.type == ttype.ID:
+			name = self.parse_id ()
+			if self.accept ('='):
+				expr = self.parse_add ()
+				return AssignExpr (name, expr)
+			else:
+				self.rollback (begin)
+
+		return self.parse_add ()
 		
 	def parse_add (self):
 		left = self.parse_mul ()

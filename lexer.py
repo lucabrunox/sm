@@ -61,7 +61,7 @@ class Lexer:
 				num += int(self.read())
 			return Token (ttype.NUM, num)
 
-		if c in "+-*/=()[]{}":
+		if c in "+-*/=()[]{};:|":
 			return Token (c)
 
 		return Token (ttype.UNKNOWN)

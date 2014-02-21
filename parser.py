@@ -1,6 +1,7 @@
 from ast import *
 import ttype
 import functools
+import traceback
 
 class Position:
 	def __init__ (self, row, col):
@@ -56,8 +57,12 @@ class Parser:
 
 	def parse (self):
 		self.next ()
-		expr = self.parse_seq ()
+		expr = self.parse_expr ()
 		self.expect (ttype.EOF)
+		return expr
+
+	def parse_expr (self):
+		expr = self.parse_seq ()
 		return expr
 
 	def parse_seq (self):
@@ -100,7 +105,7 @@ class Parser:
 				arg = self.parse_add ()
 			return call
 		except Exception, e:
-			# print e
+			# traceback.print_exc()
 			self.rollback (begin)
 			return func
 
@@ -141,6 +146,6 @@ class Parser:
 		
 	def parse_inner (self):
 		self.skip ('(')
-		expr = self.parse ()
+		expr = self.parse_expr ()
 		self.skip (')')
 		return expr

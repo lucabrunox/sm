@@ -7,14 +7,19 @@ class Scope:
 		self.parent = parent
 		
 	def __setitem__ (self, name, value):
+		if name in self:
+			raise RuntimeError ("shadowing '%s'" % name)
 		self.vals[name] = value
 
+	def __contains__ (self, name):
+		return name in self.vals or (self.parent and name in self.parent)
+		
 	def __getitem__ (self, name):
 		val = self.vals.get (name)
 		if val:
 			return val
 		if self.parent:
-			return self.parent.get (name)
+			return self.parent[name]
 		raise RuntimeError ("'%s' not found in scope" % name)
 
 	@staticmethod

@@ -21,7 +21,8 @@ class Parser:
 		self.primary_map = {
 			ttype.ID: self.parse_member,
 			ttype.NUM: self.parse_num_literal,
-			'(': self.parse_inner
+			'(': self.parse_inner,
+			'[': self.parse_list
 		}
 
 	def next (self):
@@ -85,13 +86,16 @@ class Parser:
 		if self.cur.type == ttype.ID:
 			name = self.parse_id ()
 			if self.accept ('='):
-				expr = self.parse_func ()
+				expr = self.parse_nonseq ()
 				return AssignExpr (name, expr)
 			else:
 				self.rollback (begin)
 	
-		return self.parse_func ()
+		return self.parse_nonseq ()
 
+	def parse_nonseq (self):
+		return self.parse_func ()
+		
 	def parse_func (self):
 		begin = self.checkpoint ()
 		if self.cur.type == ttype.ID:
@@ -119,7 +123,6 @@ class Parser:
 				arg = self.parse_add ()
 			return call
 		except Exception, e:
-			# traceback.print_exc()
 			self.rollback (begin)
 			return func
 
@@ -162,4 +165,18 @@ class Parser:
 		self.skip ('(')
 		expr = self.parse_expr ()
 		self.skip (')')
+		return expr
+
+	def parse_list (self):
+		self.skip ('[')
+		expr = ListExpr ()
+		first = True
+		while self.cur.type != ']':
+			if not first:
+				self.skip (',')
+			else:
+				first = False
+			elem = self.parse_nonseq ()
+			expr.elems.append (elem)
+		self.skip (']')
 		return expr

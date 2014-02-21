@@ -77,6 +77,13 @@ class Runner (Visitor):
 		
 	def visit_func (self, expr):
 		self.ret = self.create_func (self.scope, expr.body, expr.params)
+
+	def visit_list (self, expr):
+		l = []
+		for elem in expr.elems:
+			elem.accept (self)
+			l.append (elem)
+		return l
 		
 	def visit_binary (self, expr):
 		expr.left.accept (self)

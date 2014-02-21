@@ -58,7 +58,17 @@ class FuncExpr:
 
 	def __str__ (self):
 		return ", ".join (params)+": "+str(self.body)
-		
+
+class ListExpr:
+	def __init__ (self):
+		self.elems = []
+
+	def accept (self, visitor):
+		visitor.visit_list (self)
+
+	def __str__ (self):
+		return "[%s]" % (", ".join (self.elems))
+
 class BinaryExpr:
 	def __init__ (self, op, left, right):
 		self.op = op

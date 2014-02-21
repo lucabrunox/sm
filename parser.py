@@ -85,13 +85,27 @@ class Parser:
 		if self.cur.type == ttype.ID:
 			name = self.parse_id ()
 			if self.accept ('='):
-				expr = self.parse_call ()
+				expr = self.parse_func ()
 				return AssignExpr (name, expr)
 			else:
 				self.rollback (begin)
 	
-		return self.parse_call ()
+		return self.parse_func ()
 
+	def parse_func (self):
+		begin = self.checkpoint ()
+		if self.cur.type == ttype.ID:
+			params = [self.parse_id ()]
+			while self.accept (','):
+				params.append (self.parse_id ())
+			if self.accept (':'):
+				body = self.parse_func ()
+				return FuncExpr (body, params)
+			else:
+				self.rollback (begin)
+
+		return self.parse_call ()
+		
 	def parse_call (self):
 		func = self.parse_add ()
 		begin = self.checkpoint ()

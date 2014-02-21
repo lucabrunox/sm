@@ -47,6 +47,17 @@ class CallExpr:
 		for arg in self.args:
 			ret += " "+str(arg)
 		return ret
+
+class FuncExpr:
+	def __init__ (self, body, params):
+		self.body = body
+		self.params = params
+
+	def accept (self, visitor):
+		visitor.visit_func (self)
+
+	def __str__ (self):
+		return ", ".join (params)+": "+str(self.body)
 		
 class BinaryExpr:
 	def __init__ (self, op, left, right):

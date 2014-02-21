@@ -17,3 +17,6 @@ class Runtime:
 		objs = map (self.resolve, objs)
 		print (*objs)
 		return objs[0]
+
+	def _id (self, obj, *args):
+		return obj

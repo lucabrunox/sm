@@ -96,7 +96,7 @@ class Parser:
 		begin = self.checkpoint ()
 		if self.cur.type == ttype.ID:
 			params = [self.parse_id ()]
-			while self.accept (','):
+			while self.cur.type == ttype.ID:
 				params.append (self.parse_id ())
 			if self.accept (':'):
 				body = self.parse_func ()

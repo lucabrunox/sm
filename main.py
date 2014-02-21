@@ -12,7 +12,6 @@ def main ():
 	ast = parser.parse ()
 	runner = Runner ()
 	result = runner.run (ast)
-	print result
 
 if __name__ == '__main__':
 	main ()

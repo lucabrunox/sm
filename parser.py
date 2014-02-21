@@ -80,13 +80,30 @@ class Parser:
 		if self.cur.type == ttype.ID:
 			name = self.parse_id ()
 			if self.accept ('='):
-				expr = self.parse_add ()
+				expr = self.parse_call ()
 				return AssignExpr (name, expr)
 			else:
 				self.rollback (begin)
+	
+		return self.parse_call ()
 
-		return self.parse_add ()
-		
+	def parse_call (self):
+		func = self.parse_add ()
+		begin = self.checkpoint ()
+		try:
+			arg = self.parse_add ()
+			call = CallExpr (func)
+			while True:
+				call.args.append (arg)
+				if self.cur.type in (ttype.EOF, ';', ')'):
+					break
+				arg = self.parse_add ()
+			return call
+		except Exception, e:
+			# print e
+			self.rollback (begin)
+			return func
+
 	def parse_add (self):
 		left = self.parse_mul ()
 		if self.cur.type in "+-":

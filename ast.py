@@ -33,6 +33,20 @@ class AssignExpr:
 		
 	def __str__ (self):
 		return "%s = %s" % (self.name, self.inner)
+
+class CallExpr:
+	def __init__ (self, func):
+		self.func = func
+		self.args = []
+
+	def accept (self, visitor):
+		visitor.visit_call (self)
+
+	def __str__ (self):
+		ret = str(self.func)
+		for arg in self.args:
+			ret += " "+str(arg)
+		return ret
 		
 class BinaryExpr:
 	def __init__ (self, op, left, right):

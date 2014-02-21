@@ -1,14 +1,15 @@
 from ast import *
+from runtime import *
 
 class Scope:
 	def __init__ (self, parent=None):
 		self.vals = {}
 		self.parent = parent
 		
-	def set (self, name, value):
+	def __setitem__ (self, name, value):
 		self.vals[name] = value
 
-	def get (self, name):
+	def __getitem__ (self, name):
 		val = self.vals.get (name)
 		if val:
 			return val
@@ -19,7 +20,11 @@ class Scope:
 class Runner (Visitor):
 	def run (self, ast):
 		self.ret = None
+		self.runtime = Runtime ()
 		self.scope = Scope ()
+		self.scope.vals = {
+			'print': self.runtime._print
+		}
 		ast.accept (self)
 		return self.ret
 
@@ -30,7 +35,16 @@ class Runner (Visitor):
 		
 	def visit_assign (self, expr):
 		expr.inner.accept (self)
-		self.scope.set (expr.name, self.ret)
+		self.scope[expr.name] = self.ret
+
+	def visit_call (self, expr):
+		expr.func.accept (self)
+		func = self.ret
+		args = []
+		for arg in expr.args:
+			arg.accept (self)
+			args.append (self.ret)
+		self.ret = func (*args)
 		
 	def visit_binary (self, expr):
 		expr.left.accept (self)
@@ -48,8 +62,11 @@ class Runner (Visitor):
 			self.ret = left / right
 
 	def visit_member (self, expr):
-		self.ret = self.scope.get (expr.name)
+		obj = self.scope
+		if expr.inner:
+			expr.inner.accept (self)
+			obj = self.ret
+		self.ret = obj[expr.name]
 
 	def visit_num_literal (self, expr):
 		self.ret = expr.value
-

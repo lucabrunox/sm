@@ -5,7 +5,9 @@ class Lazy:
 		self.func = func
 
 	def resolve (self):
-		return self.func ()
+		if not hasattr (self, "resolved"):
+			self.resolved = self.func ()
+		return self.resolved
 
 class Runtime:
 	def resolve (self, obj):

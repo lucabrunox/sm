@@ -68,7 +68,7 @@ class Lexer:
 			return Token('!=')
 			
 		if c in "+-*/<>=()[]{},;:|":
-			if c == '=*/' and self.peek() == c:
+			if c in '=*/' and self.peek() == c:
 				c += self.read()
 			elif c in '<>' and self.peek() == '=':
 				c += self.read()

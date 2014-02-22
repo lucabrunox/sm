@@ -65,13 +65,29 @@ class Runtime:
 		return [obj]
 
 	def read (self, uri, *args):
-		def _func():
-			h = open (uri, "rb")
-			def _read():
-				c = h.read (1)
-				if not c:
-					return self.eos
-				return [c, Lazy (_read)]
-			return _read()
+		h = open (uri, "rb")
+		def _read():
+			c = h.read (1)
+			if not c:
+				return self.eos
+			return [c, Lazy (_read)]
+		return _read()
 
-		return Lazy (_func)
+	def unique (self, *args):
+		return object()
+
+	def string (self, obj, *args):
+		obj = Lazy.resolve (obj)
+		res = ""
+		for x in obj:
+			res += x
+		return res
+
+	def _list (self, obj, *args):
+		obj = Lazy.resolve (obj)
+		res = []
+		while isinstance (obj, list):
+			x,ns = obj
+			res.append (Lazy.resolve (x))
+			obj = Lazy.resolve (ns)
+		return res

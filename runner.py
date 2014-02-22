@@ -33,7 +33,10 @@ class Scope:
 			'true': True,
 			'false': False,
 			'stream': runtime.stream,
-			'read': runtime.read
+			'read': runtime.read,
+			'unique': runtime.unique,
+			'string': runtime.string,
+			'list': runtime._list
 		}
 		return scope
 		
@@ -148,6 +151,8 @@ class Runner:
 				return l > r
 			elif expr.op == '!=':
 				return l != r
+			elif expr.op == '==':
+				return l == r
 			else:
 				assert False
 		self.ret = Lazy (_func)

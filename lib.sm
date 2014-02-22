@@ -19,12 +19,23 @@ head = n s:
 
 takeWhile = f: foldr (x ns: if f x then [x, ns] else eos) eos;
 
-printStream = s: map print s;
+break = p s:
+	go = xs a:
+		x, ns = xs;
+		if eos? x then [a, eos]
+		else if p x then [[x,a], ns]
+		else (left,right=go ns eos; [[x,left], right]);
+	go s eos;
 
-testcurry = x: y: x+y;
-	
-test = stream [1,2,3];
+lines = s:
+	left, ns = break (x:x=='\n') s;
+	if eos? left then eos
+	else [string (list left), lines ns];
+
+test = break (x:x=='\n');
+
+printStream = map print;
 
 file = read "test.txt";
 
-printStream (takeWhile (x:x!='\n') file)
+printStream (head 1 (lines file))

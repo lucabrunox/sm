@@ -52,6 +52,8 @@ class Lexer:
 			id = c
 			while self.peek().isalnum():
 				id += self.read ()
+			if self.peek() == '?':
+				id += self.read ()
 			return Token (ttype.ID, id)
 
 		if c.isdigit():

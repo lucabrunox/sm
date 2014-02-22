@@ -28,20 +28,21 @@ class Scope:
 		scope = Scope ()
 		scope.vals = {
 			'id': runtime._id,
-			'print': runtime._print
+			'print': runtime._print,
+			'eos': runtime.eos,
+			'eos?': lambda x: Lazy.resolve(x) == runtime.eos
 		}
 		return scope
 		
 class Runner (Visitor):
 	def run (self, ast, scope=None):
 		self.ret = None
-		self.runtime = Runtime ()
 		if not scope:
 			self.scope = Scope.base ()
 		else:
 			self.scope = scope
 		ast.accept (self)
-		return self.ret
+		return Lazy.resolve (self.ret)
 
 	def visit_seq (self, expr):
 		for a in expr.assigns:
@@ -63,7 +64,7 @@ class Runner (Visitor):
 		for arg in expr.args:
 			arg.accept (self)
 			args.append (self.ret)
-		self.ret = func (*args)
+		self.ret = Lazy (lambda: Lazy.resolve(func) (*args))
 
 	def create_func (self, pscope, body, params):
 		def _func (*args):
@@ -94,22 +95,24 @@ class Runner (Visitor):
 		left = self.ret
 		expr.right.accept (self)
 		right = self.ret
-		
-		if expr.op == '+':
-			self.ret = left + right
-		elif expr.op == '-':
-			self.ret = left - right
-		elif expr.op == '*':
-			self.ret = left * right
-		elif expr.op == '/':
-			self.ret = left / right
+
+		def _func ():
+			if expr.op == '+':
+				return Lazy.resolve(left) + Lazy.resolve(right)
+			elif expr.op == '-':
+				return Lazy.resolve(left) - Lazy.resolve(right)
+			elif expr.op == '*':
+				return Lazy.resolve(left) * Lazy.resolve(right)
+			elif expr.op == '/':
+				return Lazy.resolve(left) / Lazy.resolve(right)
+		self.ret = Lazy (_func)
 
 	def visit_member (self, expr):
 		obj = self.scope
 		if expr.inner:
 			expr.inner.accept (self)
 			obj = self.ret
-		self.ret = obj[expr.name]
+		self.ret = Lazy (lambda: Lazy.resolve(obj)[expr.name])
 
 	def visit_num_literal (self, expr):
 		self.ret = expr.value

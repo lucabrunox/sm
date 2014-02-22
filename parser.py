@@ -15,9 +15,7 @@ class Location:
 		self.end = end
 
 class Parser:
-	def __init__ (self, lexer):
-		self.lexer = lexer
-		self.cur = None
+	def __init__ (self):
 		self.primary_map = {
 			ttype.ID: self.parse_member,
 			ttype.NUM: functools.partial (self.parse_literal, ttype.NUM),
@@ -63,7 +61,10 @@ class Parser:
 		self.next ()
 		return val
 
-	def parse (self):
+	def parse (self, lexer):
+		self.lexer = lexer
+		self.cur = None
+
 		self.next ()
 		expr = self.parse_expr ()
 		self.expect (ttype.EOF)

@@ -23,11 +23,11 @@ class Scope:
 		raise RuntimeError ("'%s' not found in scope" % name)
 
 	@staticmethod
-	def base ():
-		runtime = Runtime ()
+	def base (runtime):
 		scope = Scope ()
 		scope.vals = {
 			'print': runtime._print,
+			'printS': runtime.printS,
 			'eos': runtime.eos,
 			'eos?': lambda x: Lazy.resolve(x) == runtime.eos,
 			'true': True,
@@ -42,12 +42,9 @@ class Scope:
 		return scope
 		
 class Runner:
-	def run (self, ast, scope=None):
+	def run (self, ast, scope):
 		self.ret = None
-		if not scope:
-			self.scope = Scope.base ()
-		else:
-			self.scope = scope
+		self.scope = scope
 		ast.accept (self)
 		return Lazy.resolve (self.ret)
 

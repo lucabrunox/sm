@@ -5,16 +5,18 @@ gevent.monkey.patch_all ()
 import os, sys
 from lexer import Lexer
 from parser import Parser
-from runner import Runner
-from runtime import Lazy
+from runner import *
+from runtime import *
 
 def main ():
 	lexer = Lexer ("<stdin>", sys.stdin.read())
 	parser = Parser (lexer)
 	ast = parser.parse ()
+	runtime = Runtime ()
+	scope = Scope.base (runtime)
 	runner = Runner ()
-	result = runner.run (ast)
-	Lazy.deepdiscard (result)
+	result = runner.run (ast, scope)
+	runtime.printS (result)
 
 if __name__ == '__main__':
 	main ()

@@ -51,6 +51,16 @@ class Runtime:
 		print (*objs, end='')
 		return objs[0]
 
+	def printS (self, s, *objs):
+		s = Lazy.resolve (s)
+		while s != self.eos and Lazy.resolve(s[0]) != self.eos:
+			print (Lazy.resolve (s[0]), end='')
+			if len (s) > 1:
+				s = Lazy.resolve (s[1])
+			else:
+				break
+		return self.eos
+
 	def stream (self, obj, *args):
 		obj = Lazy.resolve (obj)
 		if obj == self.eos:

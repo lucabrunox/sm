@@ -25,6 +25,15 @@ head = n s:
 	else if n < 1 then eos
 	else [x, head (n-1) ns];
 
+tail = n s:
+	go = i xs a:
+		x, ns = xs;
+		if eos? x then [0, a]
+		else (l,t = go (i+1) ns eos;
+			  if l < n then [l+1, [x, t]] else [l,t]);
+	len, r = go 0 s eos;
+	r;
+	
 takeWhile = f: foldr (x ns: if f x then [x, ns] else eos) eos;
 
 break = p s:
@@ -70,4 +79,4 @@ file2 = read "test2.txt";
 file3 = write "test3.txt";
 zipped = zip (lines file1) (lines file2);
 
-printS (file1|pipe file3)
+printS (lines file1|tail 2)

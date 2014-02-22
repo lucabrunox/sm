@@ -186,7 +186,7 @@ class Parser:
 		begin = self.checkpoint ()
 		try:
 			call = CallExpr (func)
-			while self.cur.type not in (ttype.EOF, ';', ')', ',', ']') and not (self.cur.type == ttype.ID and self.cur.value in ('then', 'else')):
+			while self.cur.type not in (ttype.EOF, ';', ')', ',', ']', '|') and not (self.cur.type == ttype.ID and self.cur.value in ('then', 'else')):
 				arg = self.parse_primary ()
 				call.args.append (arg)
 			if call.args:

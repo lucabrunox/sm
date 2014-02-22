@@ -52,9 +52,14 @@ class Runner:
 		return Lazy.resolve (self.ret)
 
 	def visit_seq (self, expr):
+		oldscope = self.scope
+		self.scope = Scope (oldscope)
+
 		for a in expr.assigns:
 			a.accept (self)
 		expr.result.accept (self)
+		
+		self.scope = oldscope
 		
 	def visit_assign (self, expr):
 		expr.inner.accept (self)

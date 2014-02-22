@@ -164,12 +164,21 @@ class Parser:
 		return left
 
 	def parse_mul (self):
-		left = self.parse_call ()
+		left = self.parse_pipe ()
 		if self.cur.type in "*/":
 			op = self.cur.type
 			self.next ()
 			right = self.parse_mul ()
 			return BinaryExpr (op, left, right)
+		return left
+
+	def parse_pipe (self):
+		left = self.parse_call ()
+		if self.accept ('|'):
+			right = self.parse_pipe ()
+			call = CallExpr (right)
+			call.args = [left]
+			return call
 		return left
 
 	def parse_call (self):

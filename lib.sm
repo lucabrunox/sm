@@ -32,17 +32,20 @@ lines = s:
 	if eos? left then eos
 	else [string (list left), lines ns];
 
-cat = s:
+catS = s:
 	x, xs = s;
 	if eos? xs then x
-	else if eos? x then cat xs
+	else if eos? x then catS xs
 	else (y, ys = x;
-		  if eos? y then cat xs
-		  else [y, cat [ys, xs]]);
+		  if eos? y then catS xs
+		  else [y, catS [ys, xs]]);
+
+cat = y x:
+	catS [x, [y]];
 
 printS = map print;
 
 file1 = read "test.txt";
-file2 = read "test.txt";
+file2 = read "test2.txt";
 
-printS (cat [file1, [file2]])
+printS (file1|cat file2)

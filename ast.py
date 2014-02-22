@@ -1,13 +1,3 @@
-class Visitor:
-	def visit_binary (self, expr):
-		pass
-
-	def visit_member (self, expr):
-		pass
-
-	def visit_num_literal (self, expr):
-		pass
-
 class SeqExpr:
 	def __init__ (self):
 		self.assigns = []
@@ -69,6 +59,18 @@ class ListExpr:
 	def __str__ (self):
 		return "[%s]" % (", ".join (map (str, self.elems)))
 
+class IfExpr:
+	def __init__ (self, cond, true, false):
+		self.cond = cond
+		self.true = true
+		self.false = false
+
+	def accept (self, visitor):
+		visitor.visit_if (self)
+		
+	def __str__ (self):
+		return "(if %s then %s else %s)" % (self.cond, self.true, self.false)
+		
 class BinaryExpr:
 	def __init__ (self, op, left, right):
 		self.op = op

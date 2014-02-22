@@ -35,6 +35,12 @@ class Parser:
 			self.next ()
 			return True
 		return False
+
+	def accept_id (self, ex):
+		if self.cur.type == ttype.ID and self.cur.value == ex:
+			self.next ()
+			return True
+		return False
 		
 	def expect (self, ex):
 		if self.cur.type != ex:
@@ -92,16 +98,13 @@ class Parser:
 					self.rollback (begin)
 					
 			if self.accept ('='):
-				expr = self.parse_nonseq ()
+				expr = self.parse_func ()
 				return AssignExpr (names, expr)
 			else:
 				self.rollback (begin)
 	
-		return self.parse_nonseq ()
-
-	def parse_nonseq (self):
 		return self.parse_func ()
-		
+
 	def parse_func (self):
 		begin = self.checkpoint ()
 		if self.cur.type == ttype.ID:
@@ -114,20 +117,33 @@ class Parser:
 			else:
 				self.rollback (begin)
 
+		return self.parse_if ()
+
+	def parse_if (self):
+		begin = self.checkpoint ()
+		if self.accept_id ('if'):
+			cond = self.parse_call ()
+			if self.accept_id ('then'):
+				true = self.parse_call ()
+				if self.accept_id ('else'):
+					false = self.parse_call ()
+					return IfExpr (cond, true, false)
+	
+		self.rollback (begin)
 		return self.parse_call ()
 		
 	def parse_call (self):
 		func = self.parse_add ()
 		begin = self.checkpoint ()
 		try:
-			arg = self.parse_add ()
 			call = CallExpr (func)
-			while True:
-				call.args.append (arg)
-				if self.cur.type in (ttype.EOF, ';', ')'):
-					break
+			while self.cur.type not in (ttype.EOF, ';', ')') and not (self.cur.type == ttype.ID and self.cur.value in ('then', 'else')):
 				arg = self.parse_add ()
-			return call
+				call.args.append (arg)
+			if call.args:
+				return call
+			else:
+				return func
 		except Exception, e:
 			self.rollback (begin)
 			return func
@@ -182,7 +198,7 @@ class Parser:
 				self.skip (',')
 			else:
 				first = False
-			elem = self.parse_nonseq ()
+			elem = self.parse_func ()
 			expr.elems.append (elem)
 		self.skip (']')
 		return expr

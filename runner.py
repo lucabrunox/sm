@@ -15,9 +15,8 @@ class Scope:
 		return name in self.vals or (self.parent and name in self.parent)
 		
 	def __getitem__ (self, name):
-		val = self.vals.get (name)
-		if val:
-			return val
+		if name in self.vals:
+			return self.vals[name]
 		if self.parent:
 			return self.parent[name]
 		raise RuntimeError ("'%s' not found in scope" % name)
@@ -30,11 +29,13 @@ class Scope:
 			'id': runtime._id,
 			'print': runtime._print,
 			'eos': runtime.eos,
-			'eos?': lambda x: Lazy.resolve(x) == runtime.eos
+			'eos?': lambda x: Lazy.resolve(x) == runtime.eos,
+			'true': True,
+			'false': False
 		}
 		return scope
 		
-class Runner (Visitor):
+class Runner:
 	def run (self, ast, scope=None):
 		self.ret = None
 		if not scope:
@@ -82,6 +83,21 @@ class Runner (Visitor):
 		
 	def visit_func (self, expr):
 		self.ret = self.create_func (self.scope, expr.body, expr.params)
+
+	def visit_if (self, expr):
+		expr.cond.accept (self)
+		cond = self.ret
+		expr.true.accept (self)
+		true = self.ret
+		expr.false.accept (self)
+		false = self.ret
+
+		def _func ():
+			if Lazy.resolve (cond):
+				return true
+			else:
+				return false
+		self.ret = Lazy (_func)
 
 	def visit_list (self, expr):
 		l = []

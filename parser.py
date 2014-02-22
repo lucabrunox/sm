@@ -84,10 +84,16 @@ class Parser:
 	def parse_assign (self):
 		begin = self.checkpoint ()
 		if self.cur.type == ttype.ID:
-			name = self.parse_id ()
+			names = [self.parse_id ()]
+			while self.accept (','):
+				if self.cur.type == ttype.ID:
+					names.append (self.parse_id ())
+				else:
+					self.rollback (begin)
+					
 			if self.accept ('='):
 				expr = self.parse_nonseq ()
-				return AssignExpr (name, expr)
+				return AssignExpr (names, expr)
 			else:
 				self.rollback (begin)
 	

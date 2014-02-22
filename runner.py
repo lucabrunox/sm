@@ -50,7 +50,11 @@ class Runner (Visitor):
 		
 	def visit_assign (self, expr):
 		expr.inner.accept (self)
-		self.scope[expr.name] = self.ret
+		if len(expr.names) == 1:
+			self.scope[expr.names[0]] = self.ret
+		else:
+			for i in range(len(expr.names)):
+				self.scope[expr.names[i]] = self.ret[i]
 
 	def visit_call (self, expr):
 		expr.func.accept (self)
@@ -82,8 +86,8 @@ class Runner (Visitor):
 		l = []
 		for elem in expr.elems:
 			elem.accept (self)
-			l.append (elem)
-		return l
+			l.append (self.ret)
+		self.ret = l
 		
 	def visit_binary (self, expr):
 		expr.left.accept (self)

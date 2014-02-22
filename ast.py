@@ -24,15 +24,15 @@ class SeqExpr:
 		return ret
 
 class AssignExpr:
-	def __init__ (self, name, inner):
-		self.name = name
+	def __init__ (self, names, inner):
+		self.names = names
 		self.inner = inner
 
 	def accept (self, visitor):
 		visitor.visit_assign (self)
 		
 	def __str__ (self):
-		return "%s = %s" % (self.name, self.inner)
+		return "%s = %s" % (", ".join (self.names), self.inner)
 
 class CallExpr:
 	def __init__ (self, func):
@@ -67,7 +67,7 @@ class ListExpr:
 		visitor.visit_list (self)
 
 	def __str__ (self):
-		return "[%s]" % (", ".join (self.elems))
+		return "[%s]" % (", ".join (map (str, self.elems)))
 
 class BinaryExpr:
 	def __init__ (self, op, left, right):

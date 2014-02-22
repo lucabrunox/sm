@@ -72,7 +72,7 @@ class Runner:
 					if r == self.scope['eos']:
 						return self.scope['eos']
 					if not isinstance(r, list):
-						raise RuntimeError ("cannot unpack: %s" % r)
+						raise RuntimeError ("cannot unpack: %s at %s: " % (r, expr))
 					if j < len(r):
 						return r[j]
 					else:
@@ -89,6 +89,16 @@ class Runner:
 			args.append (self.ret)
 		self.ret = Lazy (lambda: Lazy.resolve(func) (*args))
 
+	def visit_pipe (self, expr):
+		expr.source.accept (self)
+		for f in expr.filters:
+			source = self.ret
+			f.accept (self)
+			func = self.ret
+			def _func(filt, sourc):
+				return Lazy (lambda: Lazy.resolve(filt) (sourc))
+			self.ret = _func (func, source)
+		
 	def create_func (self, pscope, body, params):
 		def _func (*args):
 			scope = Scope (pscope)

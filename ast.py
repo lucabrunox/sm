@@ -35,9 +35,20 @@ class CallExpr:
 	def __str__ (self):
 		ret = str(self.func)
 		for arg in self.args:
-			ret += " "+str(arg)
+			ret += " (%s)" % arg
 		return ret
 
+class PipeExpr:
+	def __init__ (self, source):
+		self.source = source
+		self.filters = []
+
+	def accept (self, visitor):
+		visitor.visit_pipe (self)
+
+	def __str__ (self):
+		return "(%s | %s)" % (' | '.join (self.filters))
+		
 class FuncExpr:
 	def __init__ (self, body, params):
 		self.body = body

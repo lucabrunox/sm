@@ -173,13 +173,13 @@ class Parser:
 		return left
 
 	def parse_pipe (self):
-		left = self.parse_call ()
-		if self.accept ('|'):
-			right = self.parse_pipe ()
-			call = CallExpr (right)
-			call.args = [left]
-			return call
-		return left
+		source = self.parse_call ()
+		if self.cur.type == '|':
+			pipe = PipeExpr (source)
+			while self.accept ('|'):
+				pipe.filters.append (self.parse_call ())
+			return pipe
+		return source
 
 	def parse_call (self):
 		func = self.parse_primary ()

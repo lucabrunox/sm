@@ -58,6 +58,9 @@ class Lexer:
 				id += self.read ()
 			return Token (ttype.ID, id)
 
+		if c == '_':
+			return Token (ttype.ID, '_')
+
 		if c.isdigit():
 			num = int(c)
 			while self.peek().isdigit():

@@ -64,7 +64,9 @@ class Runner:
 	def visit_assign (self, expr):
 		expr.inner.accept (self)
 		if len(expr.names) == 1:
-			self.scope[expr.names[0]] = self.ret
+			if expr.names[0] != '_':
+				# TODO: report unused expression
+				self.scope[expr.names[0]] = self.ret
 		else:
 			l = self.ret
 			for i in range(len(expr.names)):
@@ -78,7 +80,8 @@ class Runner:
 						return r[j]
 					else:
 						return self.scope['eos']
-				self.scope[expr.names[i]] = Lazy(functools.partial (_func, i))
+				if expr.names[i] != '_':
+					self.scope[expr.names[i]] = Lazy(functools.partial (_func, i))
 
 	def visit_call (self, expr):
 		expr.func.accept (self)

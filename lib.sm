@@ -31,7 +31,7 @@ tail = n s:
 		if eos? x then [0, a]
 		else (l,t = go (i+1) ns eos;
 			  if l < n then [l+1, [x, t]] else [l,t]);
-	len, r = go 0 s eos;
+	_, r = go 0 s eos;
 	r;
 	
 takeWhile = f: foldr (x ns: if f x then [x, ns] else eos) eos;

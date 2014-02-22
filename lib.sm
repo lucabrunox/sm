@@ -51,18 +51,17 @@ lines = s:
 
 catS = s:
 	x, xs = s;
+	y, ys = x;
 	if eos? xs then x
-	else if eos? x then catS xs
-	else (y, ys = x;
-		  if eos? y then catS xs
-		  else [y, catS [ys, xs]]);
+	else if eos? y then catS xs
+	else [y, catS [ys, xs]];
 
-zip = sx sy:
+zip = sy sx:
 	x, xs = sx;
 	y, ys = sy;
 	if eos? x then eos
 	else if eos? y then eos
-	else [[x,[y]], zip xs ys];
+	else [[x,[y]], zip ys xs];
 
 cat = y x:
 	catS [x, [y]];
@@ -81,4 +80,4 @@ file3 = write "test3.txt";
 fjson = read "json.txt";
 zipped = zip (lines file1) (lines file2);
 
-fromJson fjson
+repeat 'foo'|zip (repeat '\n')|head 10|catS

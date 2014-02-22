@@ -72,7 +72,7 @@ class Runtime:
 	def printS (self, s, *objs):
 		s = Lazy.resolve (s)
 		while s != self.eos and Lazy.resolve(s[0]) != self.eos:
-			print (Lazy.resolve (s[0]), end='')
+			print (Lazy.deepresolve (s[0]), end='')
 			if len (s) > 1:
 				s = Lazy.resolve (s[1])
 			else:

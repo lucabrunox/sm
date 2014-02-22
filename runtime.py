@@ -69,6 +69,7 @@ class Runtime:
 		def _read():
 			c = h.read (1)
 			if not c:
+				h.close()
 				return self.eos
 			return [c, Lazy (_read)]
 		return _read()

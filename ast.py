@@ -97,12 +97,12 @@ class MemberExpr:
 		else:
 			return self.name
 
-class NumLiteral:
+class Literal:
 	def __init__ (self, value):
 		self.value = value
 
 	def accept (self, visitor):
-		visitor.visit_num_literal (self)
+		visitor.visit_literal (self)
 
 	def __str__ (self):
 		return str(self.value)

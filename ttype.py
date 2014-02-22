@@ -2,7 +2,8 @@ tnames = [
 	'EOF',
 	'UNKNOWN',
 	'ID',
-	'NUM'
+	'NUM',
+	'STR'
 ]
 for tname in tnames:
 	locals()[tname] = tname

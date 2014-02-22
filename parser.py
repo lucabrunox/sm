@@ -20,7 +20,8 @@ class Parser:
 		self.cur = None
 		self.primary_map = {
 			ttype.ID: self.parse_member,
-			ttype.NUM: self.parse_num_literal,
+			ttype.NUM: functools.partial (self.parse_literal, ttype.NUM),
+			ttype.STR: functools.partial (self.parse_literal, ttype.STR),
 			'(': self.parse_inner,
 			'[': self.parse_list
 		}
@@ -125,15 +126,24 @@ class Parser:
 	def parse_if (self):
 		begin = self.checkpoint ()
 		if self.accept_id ('if'):
-			cond = self.parse_rel ()
+			cond = self.parse_eq ()
 			if self.accept_id ('then'):
-				true = self.parse_rel ()
+				true = self.parse_eq ()
 				if self.accept_id ('else'):
 					false = self.parse_if ()
 					return IfExpr (cond, true, false)
 	
 		self.rollback (begin)
-		return self.parse_rel ()
+		return self.parse_eq ()
+
+	def parse_eq (self):
+		left = self.parse_rel ()
+		if self.cur.type in ["==", "!="]:
+			op = self.cur.type
+			self.next ()
+			right = self.parse_eq ()
+			return BinaryExpr (op, left, right)
+		return left
 
 	def parse_rel (self):
 		left = self.parse_add ()
@@ -191,9 +201,9 @@ class Parser:
 		id = self.parse_id ()
 		return MemberExpr (inner, id)
 
-	def parse_num_literal (self):
-		self.expect (ttype.NUM)
-		expr = NumLiteral (self.cur.value)
+	def parse_literal (self, t):
+		self.expect (t)
+		expr = Literal (self.cur.value)
 		self.next ()
 		return expr
 		

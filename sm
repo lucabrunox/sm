@@ -6,6 +6,7 @@ import os, sys
 from lexer import Lexer
 from parser import Parser
 from runner import Runner
+from runtime import Lazy
 
 def main ():
 	lexer = Lexer ("<stdin>", sys.stdin.read())
@@ -13,6 +14,7 @@ def main ():
 	ast = parser.parse ()
 	runner = Runner ()
 	result = runner.run (ast)
+	Lazy.deepdiscard (result)
 
 if __name__ == '__main__':
 	main ()

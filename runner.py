@@ -32,7 +32,8 @@ class Scope:
 			'eos?': lambda x: Lazy.resolve(x) == runtime.eos,
 			'true': True,
 			'false': False,
-			'stream': runtime.stream
+			'stream': runtime.stream,
+			'read': runtime.read
 		}
 		return scope
 		
@@ -131,18 +132,24 @@ class Runner:
 		right = self.ret
 
 		def _func ():
+			l = Lazy.resolve(left)
+			r = Lazy.resolve(right)
 			if expr.op == '+':
-				return Lazy.resolve(left) + Lazy.resolve(right)
+				return l + r
 			elif expr.op == '-':
-				return Lazy.resolve(left) - Lazy.resolve(right)
+				return l - r
 			elif expr.op == '*':
-				return Lazy.resolve(left) * Lazy.resolve(right)
+				return l * r
 			elif expr.op == '/':
-				return Lazy.resolve(left) / Lazy.resolve(right)
+				return l / r
 			elif expr.op == '<':
-				return Lazy.resolve(left) < Lazy.resolve(right)
+				return l < r
 			elif expr.op == '>':
-				return Lazy.resolve(left) > Lazy.resolve(right)
+				return l > r
+			elif expr.op == '!=':
+				return l != r
+			else:
+				assert False
 		self.ret = Lazy (_func)
 
 	def visit_member (self, expr):
@@ -152,5 +159,5 @@ class Runner:
 			obj = self.ret
 		self.ret = Lazy (lambda: Lazy.resolve(obj)[expr.name])
 
-	def visit_num_literal (self, expr):
+	def visit_literal (self, expr):
 		self.ret = expr.value

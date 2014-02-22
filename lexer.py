@@ -63,7 +63,31 @@ class Lexer:
 				num += int(self.read())
 			return Token (ttype.NUM, num)
 
+		if c == '!':
+			assert self.read() == '='
+			return Token('!=')
+			
 		if c in "+-*/<>=()[]{},;:|":
+			if c == '=*/' and self.peek() == c:
+				c += self.read()
+			elif c in '<>' and self.peek() == '=':
+				c += self.read()
 			return Token (c)
+
+		if c in "'\"":
+			q = c
+			s = ""
+			while self.peek() != q:
+				if self.peek() == '\\':
+					self.read()
+					n = self.read ()
+					if n == 'n':
+						s += '\n'
+					else:
+						s += n
+				else:
+					s += self.read()
+			self.read()
+			return Token (ttype.STR, s)
 			
 		return Token (ttype.UNKNOWN)

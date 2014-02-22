@@ -1,8 +1,9 @@
 # -*- coding: utf8 -*-
 
 from __future__ import print_function
-import collections
 import functools
+import io
+from collections import deque
 
 class Lazy:
 	def __init__ (self, func):
@@ -27,6 +28,16 @@ class Lazy:
 				obj[i] = Lazy.deepresolve(obj[i])
 		return obj
 
+	@staticmethod
+	def deepdiscard (obj):
+		q = deque([obj])
+		while q:
+			obj = Lazy.resolve (q.popleft ())
+			if isinstance (obj, list):
+				for sub in obj:
+					q.append (sub)
+		return obj
+
 class EOS:
 	def __repr__ (self):
 		return "⟂"
@@ -37,7 +48,7 @@ class Runtime:
 		
 	def _print (self, *objs):
 		objs = map (Lazy.deepresolve, objs)
-		print (*objs)
+		print (*objs, end='')
 		return objs[0]
 
 	def stream (self, obj, *args):
@@ -52,3 +63,15 @@ class Runtime:
 					return [l[0], Lazy(functools.partial (_func, l[1:]))]
 			return _func (obj)
 		return [obj]
+
+	def read (self, uri, *args):
+		def _func():
+			h = open (uri, "rb")
+			def _read():
+				c = h.read (1)
+				if not c:
+					return self.eos
+				return [c, Lazy (_read)]
+			return _read()
+
+		return Lazy (_func)

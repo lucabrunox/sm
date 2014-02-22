@@ -15,15 +15,20 @@ head = n s:
 	else if n < 1 then eos
 	else [x, head (n-1) ns];
 
+takeWhile = f s:
+	x, ns = s;
+	if eos? x then eos
+	else if f x then [x, takeWhile f ns]
+	else eos;
+	
 flip = f x y: f y x;
+
+printStream = s: map print s;
 
 testcurry = x: y: x+y;
 	
 test = stream [1,2,3];
 
-print 10
-	(map (x:x+1) test)
-	(filter (x:x < 3) test)
-	(filter (x:x > 1) test)
-	(head 10 test)
-	(testcurry 3 4)
+file = read "test.txt";
+
+printStream (takeWhile (x:x!='\n') file)

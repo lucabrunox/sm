@@ -32,7 +32,8 @@ class Scope:
 			'eos': runtime.eos,
 			'eos?': lambda x: Lazy.resolve(x) == runtime.eos,
 			'true': True,
-			'false': False
+			'false': False,
+			'stream': runtime.stream
 		}
 		return scope
 		

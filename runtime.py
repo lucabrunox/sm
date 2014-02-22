@@ -2,6 +2,7 @@
 
 from __future__ import print_function
 import collections
+import functools
 
 class Lazy:
 	def __init__ (self, func):
@@ -41,3 +42,16 @@ class Runtime:
 
 	def _id (self, obj, *args):
 		return obj
+
+	def stream (self, obj, *args):
+		obj = Lazy.resolve (obj)
+		if obj == self.eos:
+			return self.eos
+		if isinstance (obj, list):
+			def _func(l):
+				if not l:
+					return self.eos
+				else:
+					return [l[0], Lazy(functools.partial (_func, l[1:]))]
+			return _func (obj)
+		return [obj]

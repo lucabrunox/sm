@@ -15,9 +15,11 @@ heads = n s:
 	if eos? x then eos
 	else if n < 1 then eos
 	else [x, heads (n-1) ns];
-head = heads 10;
+head = heads 1;
+
+flip = f x y: f y x;
 	
-test = [1,[2,[3]]];
+test = stream [1,2,3];
 
 print 10
 	(map (x:x+1) test)

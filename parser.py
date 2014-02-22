@@ -44,7 +44,7 @@ class Parser:
 		
 	def expect (self, ex):
 		if self.cur.type != ex:
-			raise RuntimeError ("Expected %s, got %s" % (ex, self.cur))
+			raise RuntimeError ("Expected %s, got %s at %d,%d" % (ex, self.cur, self.lexer.row, self.lexer.col))
 
 	def skip (self, ex):
 		self.expect (ex)

@@ -27,7 +27,6 @@ class Scope:
 		runtime = Runtime ()
 		scope = Scope ()
 		scope.vals = {
-			'id': runtime._id,
 			'print': runtime._print,
 			'eos': runtime.eos,
 			'eos?': lambda x: Lazy.resolve(x) == runtime.eos,
@@ -91,7 +90,13 @@ class Runner:
 				return self.create_func (scope, body, params[len(args):])
 			else:
 				runner = Runner ()
-				return runner.run (body, scope)
+				val = runner.run (body, scope)
+				if len (args) > len (params):
+					# call returned function
+					val = Lazy.resolve (val)
+					return val (*args[len(params):])
+				else:
+					return val
 		return _func
 		
 	def visit_func (self, expr):

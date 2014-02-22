@@ -1,23 +1,23 @@
-map = f s:
-	x, ns = s;
-	if eos? x
-		then eos
-		else [f x, map f ns];
+id = x: x;
 
-filter = f s:
+foldr = f z s:
 	x, ns = s;
-	if eos? x then eos
-	else if f x then [x, filter f ns]
-	else filter f ns;
+	if eos? x then z
+	else f x (foldr f z ns);
 
-heads = n s:
+map = f s: foldr (x ns: [f x, ns]) eos s;
+
+filter = f s: foldr (x ns: if f x then [x, ns] else ns) eos s;
+
+head = n s:
 	x, ns = s;
 	if eos? x then eos
 	else if n < 1 then eos
-	else [x, heads (n-1) ns];
-head = heads 1;
+	else [x, head (n-1) ns];
 
 flip = f x y: f y x;
+
+testcurry = x: y: x+y;
 	
 test = stream [1,2,3];
 
@@ -25,4 +25,5 @@ print 10
 	(map (x:x+1) test)
 	(filter (x:x < 3) test)
 	(filter (x:x > 1) test)
-	(head test)
+	(head 10 test)
+	(testcurry 3 4)

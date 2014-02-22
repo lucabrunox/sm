@@ -40,9 +40,6 @@ class Runtime:
 		print (*objs)
 		return objs[0]
 
-	def _id (self, obj, *args):
-		return obj
-
 	def stream (self, obj, *args):
 		obj = Lazy.resolve (obj)
 		if obj == self.eos:

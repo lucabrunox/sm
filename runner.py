@@ -62,6 +62,8 @@ class Runner:
 					r = Lazy.resolve(l)
 					if r == self.scope['eos']:
 						return self.scope['eos']
+					if not isinstance(r, list):
+						raise RuntimeError ("cannot unpack: %s" % r)
 					if j < len(r):
 						return r[j]
 					else:

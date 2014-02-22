@@ -67,6 +67,9 @@ zip = sx sy:
 cat = y x:
 	catS [x, [y]];
 
+repeat = x:
+	[x, repeat x];
+	
 pipe = w r:
 	x, ns = r;
 	if eos? x then w eos
@@ -75,6 +78,7 @@ pipe = w r:
 file1 = read "test.txt";
 file2 = read "test2.txt";
 file3 = write "test3.txt";
+fjson = read "json.txt";
 zipped = zip (lines file1) (lines file2);
 
-lines file1|tail 2|pipe file3
+fromJson fjson

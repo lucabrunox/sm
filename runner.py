@@ -37,7 +37,8 @@ class Scope:
 			'write': runtime.write,
 			'unique': runtime.unique,
 			'string': runtime.string,
-			'list': runtime._list
+			'list': runtime._list,
+			'fromJson': runtime.fromJson
 		}
 		return scope
 		

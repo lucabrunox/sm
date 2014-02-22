@@ -41,6 +41,24 @@ class Lazy:
 class EOS:
 	def __repr__ (self):
 		return "⟂"
+
+class Stream:
+	def __init__ (self, sm):
+		self.sm = Lazy.resolve (sm)
+		self.buffer = ""
+
+	def read (self, count):
+		res = self.buffer[:count]
+		self.buffer = self.buffer[count:]
+		while len(res) < count and isinstance (self.sm, list):
+			x,ns = self.sm
+			res += Lazy.resolve (x)
+			self.sm = Lazy.resolve (ns)
+			
+		if len(res) > count:
+			self.buffer += res[len(res)-count:]
+			res = res[:count]
+		return res
 		
 class Runtime:
 	def __init__ (self):
@@ -59,7 +77,7 @@ class Runtime:
 				s = Lazy.resolve (s[1])
 			else:
 				break
-		return self.eos
+		return s
 
 	def stream (self, obj, *args):
 		obj = Lazy.resolve (obj)
@@ -106,6 +124,19 @@ class Runtime:
 			res += x
 		return res
 
+	def fromJson (self, s, *args):
+		import ijson
+		stream = Stream (s)
+		it = ijson.parse (stream)
+		def _read():
+			try:
+				e = it.next()
+			except StopIteration:
+				return self.eos
+				
+			return [[e[1], e[2]], Lazy (_read)]
+		return _read()
+		
 	def _list (self, obj, *args):
 		obj = Lazy.resolve (obj)
 		res = []

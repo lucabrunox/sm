@@ -74,10 +74,12 @@ pipe = w r:
 	if eos? x then w eos
 	else pipe (w x) ns;
 
+eols = s: zip (repeat '\n') s|catS;
+
 file1 = read "test.txt";
 file2 = read "test2.txt";
 file3 = write "test3.txt";
 fjson = read "json.txt";
 zipped = zip (lines file1) (lines file2);
 
-repeat 'foo'|zip (repeat '\n')|head 10|catS
+repeat 'foo'|head 5|eols

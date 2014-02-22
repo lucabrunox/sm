@@ -125,33 +125,25 @@ class Parser:
 	def parse_if (self):
 		begin = self.checkpoint ()
 		if self.accept_id ('if'):
-			cond = self.parse_call ()
+			cond = self.parse_rel ()
 			if self.accept_id ('then'):
-				true = self.parse_call ()
+				true = self.parse_rel ()
 				if self.accept_id ('else'):
-					false = self.parse_call ()
+					false = self.parse_if ()
 					return IfExpr (cond, true, false)
 	
 		self.rollback (begin)
-		return self.parse_call ()
-		
-	def parse_call (self):
-		func = self.parse_add ()
-		begin = self.checkpoint ()
-		try:
-			call = CallExpr (func)
-			while self.cur.type not in (ttype.EOF, ';', ')', ',', ']') and not (self.cur.type == ttype.ID and self.cur.value in ('then', 'else')):
-				arg = self.parse_add ()
-				call.args.append (arg)
-			if call.args:
-				return call
-			else:
-				return func
-		except Exception, e:
-			# traceback.print_exc ()
-			self.rollback (begin)
-			return func
+		return self.parse_rel ()
 
+	def parse_rel (self):
+		left = self.parse_add ()
+		if self.cur.type in "<>":
+			op = self.cur.type
+			self.next ()
+			right = self.parse_rel ()
+			return BinaryExpr (op, left, right)
+		return left
+		
 	def parse_add (self):
 		left = self.parse_mul ()
 		if self.cur.type in "+-":
@@ -162,7 +154,7 @@ class Parser:
 		return left
 
 	def parse_mul (self):
-		left = self.parse_primary ()
+		left = self.parse_call ()
 		if self.cur.type in "*/":
 			op = self.cur.type
 			self.next ()
@@ -170,6 +162,23 @@ class Parser:
 			return BinaryExpr (op, left, right)
 		return left
 
+	def parse_call (self):
+		func = self.parse_primary ()
+		begin = self.checkpoint ()
+		try:
+			call = CallExpr (func)
+			while self.cur.type not in (ttype.EOF, ';', ')', ',', ']') and not (self.cur.type == ttype.ID and self.cur.value in ('then', 'else')):
+				arg = self.parse_primary ()
+				call.args.append (arg)
+			if call.args:
+				return call
+			else:
+				return func
+		except Exception, e:
+			# traceback.print_exc ()
+			self.rollback (begin)
+			return func
+			
 	def parse_primary (self):
 		func = self.primary_map.get (self.cur.type)
 		if not func:
@@ -177,6 +186,7 @@ class Parser:
 		expr = func ()
 		return expr
 
+		
 	def parse_member (self, inner=None):
 		id = self.parse_id ()
 		return MemberExpr (inner, id)

@@ -4,4 +4,15 @@ map = f s:
 		then eos
 		else [f x, map f ns];
 
-print (map (x:x+1) [1,[2,[3]]]) eos
+filter = f s:
+	x, ns = s;
+	if eos? x then eos
+	else if f x then [x, filter f ns]
+	else filter f ns;
+
+test = [1,[2,[3]]];
+
+print 10
+	(map (x:x+1) test)
+	(filter (x:x < 3) test)
+	(filter (x:x > 1) test)

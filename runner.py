@@ -131,6 +131,10 @@ class Runner:
 				return Lazy.resolve(left) * Lazy.resolve(right)
 			elif expr.op == '/':
 				return Lazy.resolve(left) / Lazy.resolve(right)
+			elif expr.op == '<':
+				return Lazy.resolve(left) < Lazy.resolve(right)
+			elif expr.op == '>':
+				return Lazy.resolve(left) > Lazy.resolve(right)
 		self.ret = Lazy (_func)
 
 	def visit_member (self, expr):

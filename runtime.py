@@ -74,6 +74,18 @@ class Runtime:
 			return [c, Lazy (_read)]
 		return _read()
 
+	def write (self, uri, *args):
+		h = open (uri, "wb")
+		def _write(c, *args):
+			c = Lazy.resolve (c)
+			if c == self.eos:
+				h.close ()
+				return self.eos
+			else:
+				h.write (c)
+				return _write
+		return _write
+		
 	def unique (self, *args):
 		return object()
 

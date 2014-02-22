@@ -34,6 +34,7 @@ class Scope:
 			'false': False,
 			'stream': runtime.stream,
 			'read': runtime.read,
+			'write': runtime.write,
 			'unique': runtime.unique,
 			'string': runtime.string,
 			'list': runtime._list

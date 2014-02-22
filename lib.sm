@@ -58,10 +58,16 @@ zip = sx sy:
 cat = y x:
 	catS [x, [y]];
 
+pipe = w r:
+	x, ns = r;
+	if eos? x then w eos
+	else pipe (w x) ns;
+
 printS = map print;
 
 file1 = read "test.txt";
 file2 = read "test2.txt";
+file3 = write "test3.txt";
 zipped = zip (lines file1) (lines file2);
 
-printS (filter (x:x!='\n') (lines file1))
+printS (file1|pipe file3)

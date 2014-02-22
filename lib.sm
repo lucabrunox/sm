@@ -39,7 +39,14 @@ catS = s:
 	else (y, ys = x;
 		  if eos? y then catS xs
 		  else [y, catS [ys, xs]]);
-#asd
+
+zip = sx sy:
+	x, xs = sx;
+	y, ys = sy;
+	if eos? x then eos
+	else if eos? y then eos
+	else [[x,[y]], zip xs ys];
+
 cat = y x:
 	catS [x, [y]];
 
@@ -47,5 +54,6 @@ printS = map print;
 
 file1 = read "test.txt";
 file2 = read "test2.txt";
+zipped = zip (lines file1) (lines file2);
 
-printS (file1|cat file2)
+printS (catS zipped)

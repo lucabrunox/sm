@@ -47,7 +47,7 @@ class FuncExpr:
 		visitor.visit_func (self)
 
 	def __str__ (self):
-		return ", ".join (params)+": "+str(self.body)
+		return ", ".join (self.params)+": "+str(self.body)
 
 class ListExpr:
 	def __init__ (self):

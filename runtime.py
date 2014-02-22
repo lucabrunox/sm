@@ -27,7 +27,7 @@ class Lazy:
 		return obj
 
 class EOS:
-	def __str__ (self):
+	def __repr__ (self):
 		return "⟂"
 		
 class Runtime:

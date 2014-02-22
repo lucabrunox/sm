@@ -1,5 +1,6 @@
 from ast import *
 from runtime import *
+import functools
 
 class Scope:
 	def __init__ (self, parent=None):
@@ -55,8 +56,17 @@ class Runner:
 		if len(expr.names) == 1:
 			self.scope[expr.names[0]] = self.ret
 		else:
+			l = self.ret
 			for i in range(len(expr.names)):
-				self.scope[expr.names[i]] = self.ret[i]
+				def _func(j):
+					r = Lazy.resolve(l)
+					if r == self.scope['eos']:
+						return self.scope['eos']
+					if j < len(r):
+						return r[j]
+					else:
+						return self.scope['eos']
+				self.scope[expr.names[i]] = Lazy(functools.partial (_func, i))
 
 	def visit_call (self, expr):
 		expr.func.accept (self)

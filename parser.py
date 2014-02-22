@@ -98,21 +98,24 @@ class Parser:
 					self.rollback (begin)
 					
 			if self.accept ('='):
-				expr = self.parse_func ()
+				expr = self.parse_func (True)
 				return AssignExpr (names, expr)
 			else:
 				self.rollback (begin)
 	
-		return self.parse_func ()
+		return self.parse_func (True)
 
-	def parse_func (self):
+	def parse_func (self, seq):
 		begin = self.checkpoint ()
 		if self.cur.type == ttype.ID:
 			params = [self.parse_id ()]
 			while self.cur.type == ttype.ID:
 				params.append (self.parse_id ())
 			if self.accept (':'):
-				body = self.parse_func ()
+				if seq:
+					body = self.parse_seq ()
+				else:
+					body = self.parse_if ()
 				return FuncExpr (body, params)
 			else:
 				self.rollback (begin)
@@ -137,7 +140,7 @@ class Parser:
 		begin = self.checkpoint ()
 		try:
 			call = CallExpr (func)
-			while self.cur.type not in (ttype.EOF, ';', ')') and not (self.cur.type == ttype.ID and self.cur.value in ('then', 'else')):
+			while self.cur.type not in (ttype.EOF, ';', ')', ',', ']') and not (self.cur.type == ttype.ID and self.cur.value in ('then', 'else')):
 				arg = self.parse_add ()
 				call.args.append (arg)
 			if call.args:
@@ -145,6 +148,7 @@ class Parser:
 			else:
 				return func
 		except Exception, e:
+			# traceback.print_exc ()
 			self.rollback (begin)
 			return func
 
@@ -198,7 +202,7 @@ class Parser:
 				self.skip (',')
 			else:
 				first = False
-			elem = self.parse_func ()
+			elem = self.parse_func (False)
 			expr.elems.append (elem)
 		self.skip (']')
 		return expr

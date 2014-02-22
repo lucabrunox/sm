@@ -32,10 +32,17 @@ lines = s:
 	if eos? left then eos
 	else [string (list left), lines ns];
 
-test = break (x:x=='\n');
+cat = s:
+	x, xs = s;
+	if eos? xs then x
+	else if eos? x then cat xs
+	else (y, ys = x;
+		  if eos? y then cat xs
+		  else [y, cat [ys, xs]]);
 
-printStream = map print;
+printS = map print;
 
-file = read "test.txt";
+file1 = read "test.txt";
+file2 = read "test.txt";
 
-printStream (head 1 (lines file))
+printS (cat [file1, [file2]])

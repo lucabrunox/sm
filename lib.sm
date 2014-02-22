@@ -1,13 +1,15 @@
 id = x: x;
 
+flip = f x y: f y x;
+
 foldr = f z s:
 	x, ns = s;
 	if eos? x then z
 	else f x (foldr f z ns);
 
-map = f s: foldr (x ns: [f x, ns]) eos s;
+map = f: foldr (x ns: [f x, ns]) eos;
 
-filter = f s: foldr (x ns: if f x then [x, ns] else ns) eos s;
+filter = f: foldr (x ns: if f x then [x, ns] else ns) eos;
 
 head = n s:
 	x, ns = s;
@@ -15,13 +17,7 @@ head = n s:
 	else if n < 1 then eos
 	else [x, head (n-1) ns];
 
-takeWhile = f s:
-	x, ns = s;
-	if eos? x then eos
-	else if f x then [x, takeWhile f ns]
-	else eos;
-	
-flip = f x y: f y x;
+takeWhile = f: foldr (x ns: if f x then [x, ns] else eos) eos;
 
 printStream = s: map print s;
 

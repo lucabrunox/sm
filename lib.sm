@@ -39,7 +39,7 @@ catS = s:
 	else (y, ys = x;
 		  if eos? y then catS xs
 		  else [y, catS [ys, xs]]);
-
+#asd
 cat = y x:
 	catS [x, [y]];
 

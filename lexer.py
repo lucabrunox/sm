@@ -47,6 +47,8 @@ class Lexer:
 			# comment
 			while self.read() != '\n':
 				continue
+			c = self.peek()
+			self.read()
 
 		if c.isalpha():
 			id = c

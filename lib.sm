@@ -2,6 +2,14 @@ id = x: x;
 
 flip = f x y: f y x;
 
+not = x: x == false;
+
+empty? = x:
+	if x == [] then true
+	else if x == "" then true
+	else if eos? x then true
+	else false;
+
 foldr = f z s:
 	x, ns = s;
 	if eos? x then z
@@ -56,4 +64,4 @@ file1 = read "test.txt";
 file2 = read "test2.txt";
 zipped = zip (lines file1) (lines file2);
 
-printS (catS zipped)
+printS (filter (x:x!='\n') (lines file1))

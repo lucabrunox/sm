@@ -115,7 +115,7 @@ class Runner:
 		false = self.ret
 
 		def _func ():
-			if Lazy.resolve (cond):
+			if Lazy.resolve (cond) == True:
 				return true
 			else:
 				return false

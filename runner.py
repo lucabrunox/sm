@@ -68,7 +68,7 @@ class Runner (Visitor):
 	def create_func (self, pscope, body, params):
 		def _func (*args):
 			scope = Scope (pscope)
-			for i in range (max (len (params), len (args))):
+			for i in range (min (len (params), len (args))):
 				scope[params[i]] = args[i]
 				
 			if len (args) < len (params):

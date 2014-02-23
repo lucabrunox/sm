@@ -110,6 +110,11 @@ class Runtime:
 
 	def printS (self, s, *objs):
 		s = Lazy.resolve (s)
+		if s == self.eos:
+			return s
+		if not isinstance (s, list):
+			print (s)
+			return s
 		while s != self.eos and Lazy.resolve(s[0]) != self.eos:
 			print (Lazy.deepresolve (s[0]), end='')
 			if len (s) > 1:
@@ -227,6 +232,18 @@ class Runtime:
 	def empty (self, obj, *args):
 		obj = Lazy.resolve (obj)
 		return not obj or obj == self.eos or obj == [self.eos]
+
+	def _int (self, obj, *args):
+		obj = Lazy.resolve (obj)
+		return int(obj)
+
+	def _float (self, obj, *args):
+		obj = Lazy.resolve (obj)
+		return float(obj)
+
+	def _str (self, obj, *args):
+		obj = Lazy.resolve (obj)
+		return str(obj)
 		
 	def _list (self, obj, *args):
 		obj = Lazy.resolve (obj)

@@ -26,6 +26,8 @@ foldr = f z s:
 
 map = f: foldr (x ns: [f x, ns]) eos;
 
+sum = foldr (x ns: x+ns) 0;
+
 filter = f: foldr (x ns: if f x then [x, ns] else ns) eos;
 
 head = n s:
@@ -107,6 +109,7 @@ file3 = write "test3.txt";
 fjson = read "test.json";
 fhtml = read "test.html";
 fxml = read "test.xml";
+nums = stream [1,2,3,4,5];
 zipped = zip (lines file1) (lines file2);
 
-lines file1|grep 'l'
+nums|map int|sum

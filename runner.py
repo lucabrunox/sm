@@ -57,7 +57,10 @@ class Scope:
 			'parseHtml': runtime.parseHtml,
 			'fromXml': runtime.fromXml,
 			'match': runtime.match,
-			'empty?': runtime.empty
+			'empty?': runtime.empty,
+			'int': runtime._int,
+			'float': runtime._float,
+			'str': runtime._str
 		}
 		return scope
 		

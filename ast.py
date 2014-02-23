@@ -47,7 +47,7 @@ class PipeExpr:
 		visitor.visit_pipe (self)
 
 	def __str__ (self):
-		return "(%s | %s)" % (' | '.join (self.filters))
+		return "(%s | %s)" % (self.source, ' | '.join (map (str, self.filters)))
 		
 class FuncExpr:
 	def __init__ (self, body, params):

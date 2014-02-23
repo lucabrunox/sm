@@ -4,12 +4,6 @@ flip = f x y: f y x;
 
 not = x: x == false;
 
-empty? = x:
-	if x == [] then true
-	else if x == "" then true
-	else if eos? x then true
-	else false;
-
 foldr = f z s:
 	x, ns = s;
 	if eos? x then z
@@ -88,6 +82,8 @@ pipe = w r:
 	if eos? x then w eos
 	else pipe (w x) ns;
 
+grep = p: filter (x: match p x|empty?|not);
+
 eols = s: zip (repeat '\n') s|catS;
 
 file1 = read "test.txt";
@@ -98,4 +94,4 @@ fhtml = read "test.html";
 fxml = read "test.xml";
 zipped = zip (lines file1) (lines file2);
 
-fromXml fxml|eols
+lines file1|grep ~l~

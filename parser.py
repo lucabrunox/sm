@@ -20,6 +20,7 @@ class Parser:
 			ttype.ID: self.parse_member,
 			ttype.NUM: functools.partial (self.parse_literal, ttype.NUM),
 			ttype.STR: functools.partial (self.parse_literal, ttype.STR),
+			ttype.REGEX: functools.partial (self.parse_literal, ttype.REGEX),
 			'(': self.parse_inner,
 			'[': self.parse_list
 		}
@@ -204,6 +205,8 @@ class Parser:
 		if not func:
 			raise RuntimeError ("Unexpected %s" % self.cur)
 		expr = func ()
+		while self.accept ('.'):
+			expr = self.parse_member (expr)
 		return expr
 
 		

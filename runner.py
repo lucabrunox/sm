@@ -40,7 +40,9 @@ class Scope:
 			'list': runtime._list,
 			'fromJson': runtime.fromJson,
 			'parseHtml': runtime.parseHtml,
-			'fromXml': runtime.fromXml
+			'fromXml': runtime.fromXml,
+			'match': runtime.match,
+			'empty?': runtime.empty
 		}
 		return scope
 		
@@ -172,6 +174,10 @@ class Runner:
 				return l != r
 			elif expr.op == '==':
 				return l == r
+			elif expr.op == '<=':
+				return l <= r
+			elif expr.op == '>=':
+				return l >= r
 			else:
 				assert False
 		self.ret = Lazy (_func)

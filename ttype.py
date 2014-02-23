@@ -3,7 +3,8 @@ tnames = [
 	'UNKNOWN',
 	'ID',
 	'NUM',
-	'STR'
+	'STR',
+	'REGEX'
 ]
 for tname in tnames:
 	locals()[tname] = tname

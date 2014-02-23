@@ -59,6 +59,25 @@ class Stream:
 			self.buffer += res[len(res)-count:]
 			res = res[:count]
 		return res
+
+class Object:
+	def __init__ (self, obj):
+		self.obj = obj
+		
+	def __getitem__ (self, name):
+		if hasattr(self.obj, '__getitem__'):
+			return self.obj[name]
+		else:
+			return getattr(self.obj, name)
+
+	def __getattr__ (self, name):
+		return getattr(self.obj, name)
+			
+	def __str__ (self):
+		return str(self.obj)
+
+	def __repr__ (self):
+		return repr(self.obj)
 		
 class Runtime:
 	def __init__ (self):
@@ -162,8 +181,30 @@ class Runtime:
 		def _read():
 			if not reader.Read():
 				return self.eos
-			return [[reader.Name(), nodetypes[reader.NodeType()]], Lazy (lambda: _read())]
+			return [[reader.Name(), nodetypes[reader.NodeType()]], Lazy (_read)]
 		return _read()
+
+	def match (self, r, *args):
+		def _match (t):
+			it = Lazy.resolve(r).finditer (Lazy.resolve (t))
+			def _read():
+				try:
+					e = it.next()
+				except StopIteration:
+					return self.eos
+				return [Object (e), Lazy (_read)]
+			return _read()
+		
+		# for partial application
+		if len(args) > 0:
+			t = args[0]
+			return _match (t)
+		else:
+			return _match
+
+	def empty (self, obj, *args):
+		obj = Lazy.resolve (obj)
+		return not obj or obj == self.eos or obj == [self.eos]
 		
 	def _list (self, obj, *args):
 		obj = Lazy.resolve (obj)

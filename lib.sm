@@ -66,6 +66,7 @@ catS = s:
 	else if eos? y then catS xs
 	else [y, catS [ys, xs]];
 
+# Zip two streams
 zip = sy sx:
 	x, xs = sx;
 	y, ys = sy;
@@ -75,6 +76,10 @@ zip = sy sx:
 
 fst = l:
 	x, _ = l;
+	x;
+
+snd = l:
+	_, x = l;
 	x;
 
 # Concatenate two streams

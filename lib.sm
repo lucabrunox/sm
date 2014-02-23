@@ -94,4 +94,4 @@ fhtml = read "test.html";
 fxml = read "test.xml";
 zipped = zip (lines file1) (lines file2);
 
-lines file1|grep ~l~
+lines file1|grep 'l'

@@ -2,8 +2,10 @@
 
 from __future__ import print_function
 import functools
-import io
+import io, re
 from collections import deque
+
+re_type = type(re.compile('foo'))
 
 class Lazy:
 	def __init__ (self, func):
@@ -184,9 +186,14 @@ class Runtime:
 			return [[reader.Name(), nodetypes[reader.NodeType()]], Lazy (_read)]
 		return _read()
 
-	def match (self, r, *args):
+	def match (self, p, *args):
 		def _match (t):
-			it = Lazy.resolve(r).finditer (Lazy.resolve (t))
+			r = Lazy.resolve(p)
+			if isinstance (r, re_type):
+				it = r.finditer (Lazy.resolve (t))
+			else:
+				it = re.compile(re.escape(r)).finditer (Lazy.resolve (t))
+				
 			def _read():
 				try:
 					e = it.next()

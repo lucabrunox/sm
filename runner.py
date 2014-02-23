@@ -77,7 +77,7 @@ class Runner:
 		self.eos = scope['eos']
 		
 		ast.accept (self)
-		return Lazy.resolve (self.ret)
+		return self.ret
 
 	def visit_seq (self, expr):
 		oldscope = self.scope
@@ -180,7 +180,7 @@ class Runner:
 			else:
 				return false
 
-		if not isinstance (cond, Lazy) and isinstance (true, Lazy) and not isinstance (false, Lazy):
+		if not isinstance (cond, Lazy) and not isinstance (true, Lazy) and not isinstance (false, Lazy):
 			self.ret = _func ()
 		else:
 			self.ret = Lazy (_func)
@@ -235,7 +235,7 @@ class Runner:
 			else:
 				assert False
 
-		if not isinstance (left, Lazy) and isinstance (right, Lazy):
+		if not isinstance (left, Lazy) and not isinstance (right, Lazy):
 			self.ret = _func()
 		else:
 			self.ret = Lazy (_func)

@@ -99,7 +99,7 @@ pipe = w r:
 
 grep = p: filter (match p);
 
-eols = s: zip (repeat '\n') s|catS;
+eols = s: s|zip (repeat '\n')|catS;
 
 file1 = read "test.txt";
 file2 = read "test2.txt";

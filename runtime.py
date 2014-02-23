@@ -66,6 +66,9 @@ class Runtime:
 		
 	def _print (self, *objs):
 		objs = map (Lazy.deepresolve, objs)
+		# import pprint
+		# pp = pprint.PrettyPrinter(indent=4)
+		# pp.pprint(*objs)
 		print (*objs, end='')
 		return objs[0]
 
@@ -126,8 +129,7 @@ class Runtime:
 
 	def fromJson (self, s, *args):
 		import ijson
-		stream = Stream (s)
-		it = ijson.parse (stream)
+		it = ijson.parse (Stream (s))
 		def _read():
 			try:
 				e = it.next()
@@ -136,7 +138,20 @@ class Runtime:
 				
 			return [[e[1], e[2]], Lazy (_read)]
 		return _read()
-		
+
+	def parseHtml (self, s, *args):
+		import lxml.html
+		# no stream reader found :(
+		root = lxml.html.parse (Stream (s)).getroot()
+		def _read(it):
+			try:
+				e = it.next()
+			except StopIteration:
+				return self.eos
+
+			return [[e, Lazy (lambda: _read (iter (e)))], Lazy (lambda: _read(it))]
+		return _read (iter (root))
+
 	def _list (self, obj, *args):
 		obj = Lazy.resolve (obj)
 		res = []

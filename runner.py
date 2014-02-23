@@ -38,7 +38,8 @@ class Scope:
 			'unique': runtime.unique,
 			'string': runtime.string,
 			'list': runtime._list,
-			'fromJson': runtime.fromJson
+			'fromJson': runtime.fromJson,
+			'parseHtml': runtime.parseHtml
 		}
 		return scope
 		

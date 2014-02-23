@@ -63,9 +63,22 @@ zip = sy sx:
 	else if eos? y then eos
 	else [[x,[y]], zip ys xs];
 
+fst = l:
+	x, _ = l;
+	x;
+
+# Flattens a stream of streams
 cat = y x:
 	catS [x, [y]];
 
+# Flattens a tree of streams
+deep = s:
+	x, xs = s;
+	y, ys = x;
+	if eos? xs then [y, deep ys]
+	else if eos? y then deep xs
+	else [y, deep ys|cat (deep xs)];
+	
 repeat = x:
 	[x, repeat x];
 	
@@ -79,7 +92,8 @@ eols = s: zip (repeat '\n') s|catS;
 file1 = read "test.txt";
 file2 = read "test2.txt";
 file3 = write "test3.txt";
-fjson = read "json.txt";
+fjson = read "test.json";
+fhtml = read "test.html";
 zipped = zip (lines file1) (lines file2);
 
-repeat 'foo'|head 5|eols
+parseHtml fhtml|deep

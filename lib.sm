@@ -17,8 +17,6 @@ id = x: x;
 
 flip = f x y: f y x;
 
-not = x: x == false;
-
 foldr = f z s:
 	x, ns = s;
 	if eos? x then z
@@ -112,4 +110,4 @@ fxml = read "test.xml";
 nums = stream [1,2,3,4,5];
 zipped = zip (lines file1) (lines file2);
 
-nums|map int|sum
+true or false

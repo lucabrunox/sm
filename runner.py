@@ -60,7 +60,8 @@ class Scope:
 			'empty?': runtime.empty,
 			'int': runtime._int,
 			'float': runtime._float,
-			'str': runtime._str
+			'str': runtime._str,
+			'not': runtime._not
 		}
 		return scope
 		
@@ -154,7 +155,7 @@ class Runner:
 		false = self.ret
 
 		def _func ():
-			if Lazy.resolve (cond) == True:
+			if Lazy.resolve (cond):
 				return true
 			else:
 				return false
@@ -174,8 +175,19 @@ class Runner:
 		right = self.ret
 
 		def _func ():
-			l = Lazy.resolve(left)
-			r = Lazy.resolve(right)
+			l = Lazy.resolve (left)
+			if expr.op == 'or':
+				if l:
+					return True
+				r = Lazy.resolve (right)
+				return not not r
+			elif expr.op == 'and':
+				if not l:
+					return False
+				r = Lazy.resolve(right)
+				return not not r
+
+			r = Lazy.resolve (right)
 			if expr.op == '+':
 				return l + r
 			elif expr.op == '-':

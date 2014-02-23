@@ -143,16 +143,30 @@ class Parser:
 	def parse_if (self):
 		begin = self.checkpoint ()
 		if self.accept_id ('if'):
-			cond = self.parse_eq ()
+			cond = self.parse_or ()
 			if self.accept_id ('then'):
-				true = self.parse_eq ()
+				true = self.parse_or ()
 				if self.accept_id ('else'):
 					false = self.parse_if ()
 					return IfExpr (cond, true, false)
 	
 		self.rollback (begin)
-		return self.parse_eq ()
+		return self.parse_or ()
 
+	def parse_or (self):
+		left = self.parse_and ()
+		if self.accept_id ('or'):
+			right = self.parse_or ()
+			return BinaryExpr ('or', left, right)
+		return left
+
+	def parse_and (self):
+		left = self.parse_eq ()
+		if self.accept_id ('and'):
+			right = self.parse_and ()
+			return BinaryExpr ('and', left, right)
+		return left
+		
 	def parse_eq (self):
 		left = self.parse_rel ()
 		if self.cur.type in ["==", "!="]:
@@ -164,7 +178,7 @@ class Parser:
 
 	def parse_rel (self):
 		left = self.parse_add ()
-		if self.cur.type in "<>":
+		if self.cur.type in ["<", ">", "<=", ">="]:
 			op = self.cur.type
 			self.next ()
 			right = self.parse_rel ()
@@ -203,7 +217,7 @@ class Parser:
 		begin = self.checkpoint ()
 		try:
 			call = CallExpr (func)
-			while self.cur.type not in (ttype.EOF, ';', ')', ',', ']', '|') and not (self.cur.type == ttype.ID and self.cur.value in ('then', 'else')):
+			while self.cur.type not in (ttype.EOF, ';', ')', ',', ']', '|') and not (self.cur.type == ttype.ID and self.cur.value in ('then', 'else', 'and', 'or')):
 				arg = self.parse_primary ()
 				call.args.append (arg)
 			if call.args:

@@ -206,6 +206,10 @@ class Runtime:
 			return [[reader.Name(), nodetypes[reader.NodeType()]], Lazy (_read)]
 		return _read()
 
+	def _not (self, obj, *args):
+		obj = Lazy.resolve (obj)
+		return not obj
+		
 	def match (self, p, *args):
 		def _match (t):
 			r = Lazy.resolve(p)

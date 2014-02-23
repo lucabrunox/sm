@@ -56,13 +56,17 @@ class CallExpr:
 class PipeExpr:
 	def __init__ (self, source):
 		self.source = source
+		self.compose = False
 		self.filters = []
 
 	def accept (self, visitor):
 		visitor.visit_pipe (self)
 
 	def __str__ (self):
-		return "(%s | %s)" % (self.source, ' | '.join (map (str, self.filters)))
+		if self.compose:
+			return "(| %s) " % ' | '.join (map (str, self.filters))
+		else:
+			return "(%s | %s)" % (self.source, ' | '.join (map (str, self.filters)))
 		
 class FuncExpr:
 	def __init__ (self, body, params):

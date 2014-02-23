@@ -133,13 +133,22 @@ class Parser:
 				if seq:
 					body = self.parse_seq ()
 				else:
-					body = self.parse_if ()
+					body = self.parse_compose ()
 				return FuncExpr (body, params)
 			else:
 				self.rollback (begin)
 
-		return self.parse_if ()
+		return self.parse_compose ()
 
+	def parse_compose (self):
+		if self.accept ('|'):
+			pipe = self.parse_pipe ()
+			pipe.filters.insert (0, pipe.source)
+			pipe.source = None
+			pipe.compose = True
+			return pipe
+		return self.parse_if ()
+		
 	def parse_if (self):
 		begin = self.checkpoint ()
 		if self.accept_id ('if'):

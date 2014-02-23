@@ -115,14 +115,27 @@ class Runner:
 		self.ret = Lazy (lambda: Lazy.resolve(func) (*args))
 
 	def visit_pipe (self, expr):
-		expr.source.accept (self)
+		filters = []
+		
 		for f in expr.filters:
-			source = self.ret
 			f.accept (self)
-			func = self.ret
-			def _func(filt, sourc):
-				return Lazy (lambda: Lazy.resolve(filt) (sourc))
-			self.ret = _func (func, source)
+			filters.append (self.ret)
+
+		if expr.compose:
+			def _source(s, *args):
+				for f in filters:
+					def _func(filt, sourc):
+						return Lazy (lambda: Lazy.resolve(filt) (sourc))
+					s = _func (f, s)
+				return s
+			self.ret = _source
+		else:
+			expr.source.accept (self)
+			for f in filters:
+				source = self.ret
+				def _func(filt, sourc):
+					return Lazy (lambda: Lazy.resolve(filt) (sourc))
+				self.ret = _func (f, source)
 		
 	def create_func (self, pscope, body, params):
 		def _func (*args):

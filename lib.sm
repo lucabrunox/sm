@@ -99,7 +99,7 @@ pipe = w r:
 
 grep = p: filter (match p);
 
-eols = s: s|zip (repeat '\n')|catS;
+eols = |zip (repeat '\n')|catS;
 
 file1 = read "test.txt";
 file2 = read "test2.txt";
@@ -110,4 +110,4 @@ fxml = read "test.xml";
 nums = stream [1,2,3,4,5];
 zipped = zip (lines file1) (lines file2);
 
-lines file1|grep 'l'
+lines file1|grep 'l'|eols

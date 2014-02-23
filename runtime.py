@@ -208,7 +208,7 @@ class Runtime:
 
 	def _not (self, obj, *args):
 		obj = Lazy.resolve (obj)
-		return not obj
+		return self.empty (obj)
 		
 	def match (self, p, *args):
 		def _match (t):
@@ -248,6 +248,10 @@ class Runtime:
 	def _str (self, obj, *args):
 		obj = Lazy.resolve (obj)
 		return str(obj)
+
+	def _bool (self, obj, *args):
+		obj = Lazy.resolve (obj)
+		return bool(obj)
 		
 	def _list (self, obj, *args):
 		obj = Lazy.resolve (obj)

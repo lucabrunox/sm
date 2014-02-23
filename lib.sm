@@ -97,7 +97,7 @@ pipe = w r:
 	if eos? x then w eos
 	else pipe (w x) ns;
 
-grep = p: filter (x: match p x|empty?|not);
+grep = p: filter (match p);
 
 eols = s: zip (repeat '\n') s|catS;
 
@@ -110,4 +110,4 @@ fxml = read "test.xml";
 nums = stream [1,2,3,4,5];
 zipped = zip (lines file1) (lines file2);
 
-true or false
+lines file1|grep 'l'

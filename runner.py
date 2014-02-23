@@ -61,7 +61,8 @@ class Scope:
 			'int': runtime._int,
 			'float': runtime._float,
 			'str': runtime._str,
-			'not': runtime._not
+			'not': runtime._not,
+			'bool': runtime._bool
 		}
 		return scope
 		
@@ -155,7 +156,7 @@ class Runner:
 		false = self.ret
 
 		def _func ():
-			if Lazy.resolve (cond):
+			if not self.scope['empty?'] (Lazy.resolve (cond)):
 				return true
 			else:
 				return false
@@ -177,12 +178,12 @@ class Runner:
 		def _func ():
 			l = Lazy.resolve (left)
 			if expr.op == 'or':
-				if l:
+				if not self.scope['empty?'] (l):
 					return True
 				r = Lazy.resolve (right)
 				return not not r
 			elif expr.op == 'and':
-				if not l:
+				if self.scope['empty?'] (l):
 					return False
 				r = Lazy.resolve(right)
 				return not not r

@@ -72,6 +72,10 @@ class Runner:
 	def run (self, ast, scope):
 		self.ret = None
 		self.scope = scope
+		
+		self.empty = scope['empty?']
+		self.eos = scope['eos']
+		
 		ast.accept (self)
 		return Lazy.resolve (self.ret)
 
@@ -96,14 +100,14 @@ class Runner:
 			for i in range(len(expr.names)):
 				def _func(j):
 					r = Lazy.resolve(l)
-					if r == self.scope['eos']:
-						return self.scope['eos']
+					if r == self.eos:
+						return self.eos
 					if not isinstance(r, list):
 						raise RuntimeError ("cannot unpack: %s at %s: " % (r, expr))
 					if j < len(r):
 						return r[j]
 					else:
-						return self.scope['eos']
+						return self.eos
 				if expr.names[i] != '_':
 					self.scope[expr.names[i]] = Lazy(functools.partial (_func, i))
 
@@ -171,11 +175,15 @@ class Runner:
 		false = self.ret
 
 		def _func ():
-			if not self.scope['empty?'] (Lazy.resolve (cond)):
+			if not self.empty (Lazy.resolve (cond)):
 				return true
 			else:
 				return false
-		self.ret = Lazy (_func)
+
+		if not isinstance (cond, Lazy) and isinstance (true, Lazy) and not isinstance (false, Lazy):
+			self.ret = _func ()
+		else:
+			self.ret = Lazy (_func)
 
 	def visit_list (self, expr):
 		l = []
@@ -193,12 +201,12 @@ class Runner:
 		def _func ():
 			l = Lazy.resolve (left)
 			if expr.op == 'or':
-				if not self.scope['empty?'] (l):
+				if not self.empty (l):
 					return True
 				r = Lazy.resolve (right)
 				return not not r
 			elif expr.op == 'and':
-				if self.scope['empty?'] (l):
+				if self.empty (l):
 					return False
 				r = Lazy.resolve(right)
 				return not not r
@@ -226,14 +234,22 @@ class Runner:
 				return l >= r
 			else:
 				assert False
-		self.ret = Lazy (_func)
+
+		if not isinstance (left, Lazy) and isinstance (right, Lazy):
+			self.ret = _func()
+		else:
+			self.ret = Lazy (_func)
 
 	def visit_member (self, expr):
 		obj = self.scope
 		if expr.inner:
 			expr.inner.accept (self)
 			obj = self.ret
-		self.ret = Lazy (lambda: Lazy.resolve(obj)[expr.name])
+
+		if not isinstance (obj, Lazy):
+			self.ret = obj[expr.name]
+		else:
+			self.ret = Lazy (lambda: Lazy.resolve(obj)[expr.name])
 
 	def visit_literal (self, expr):
 		self.ret = expr.value

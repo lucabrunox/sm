@@ -39,7 +39,8 @@ class Scope:
 			'string': runtime.string,
 			'list': runtime._list,
 			'fromJson': runtime.fromJson,
-			'parseHtml': runtime.parseHtml
+			'parseHtml': runtime.parseHtml,
+			'fromXml': runtime.fromXml
 		}
 		return scope
 		

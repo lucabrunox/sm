@@ -152,6 +152,19 @@ class Runtime:
 			return [[e, Lazy (lambda: _read (iter (e)))], Lazy (lambda: _read(it))]
 		return _read (iter (root))
 
+	def fromXml (self, s, *args):
+		import libxml2
+		input_source = libxml2.inputBuffer(Stream (s))
+		reader = input_source.newTextReader("")
+		nodetypes = ["none", "element", "attribute", "text", "cdata", "entref", "entity",
+					 "procinst", "comment", "document", "doctype", "docfragment", "notation",
+					 "whitespace", "preservewhitespace", "endelement", "endentity", "xmldecl"]
+		def _read():
+			if not reader.Read():
+				return self.eos
+			return [[reader.Name(), nodetypes[reader.NodeType()]], Lazy (lambda: _read())]
+		return _read()
+		
 	def _list (self, obj, *args):
 		obj = Lazy.resolve (obj)
 		res = []

@@ -49,6 +49,7 @@ lines = s:
 	if eos? left then eos
 	else [string (list left), lines ns];
 
+# Concatenates a stream of streams
 catS = s:
 	x, xs = s;
 	y, ys = x;
@@ -67,7 +68,7 @@ fst = l:
 	x, _ = l;
 	x;
 
-# Flattens a stream of streams
+# Concatenate two streams
 cat = y x:
 	catS [x, [y]];
 
@@ -94,6 +95,7 @@ file2 = read "test2.txt";
 file3 = write "test3.txt";
 fjson = read "test.json";
 fhtml = read "test.html";
+fxml = read "test.xml";
 zipped = zip (lines file1) (lines file2);
 
-parseHtml fhtml|deep
+fromXml fxml|eols

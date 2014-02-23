@@ -213,10 +213,11 @@ class Runtime:
 	def match (self, p, *args):
 		def _match (t):
 			r = Lazy.resolve(p)
+			t = Lazy.resolve(t)
 			if isinstance (r, re_type):
-				it = r.finditer (Lazy.resolve (t))
+				it = r.finditer (t)
 			else:
-				it = re.compile(re.escape(r)).finditer (Lazy.resolve (t))
+				it = re.compile(re.escape(r)).finditer (t)
 				
 			def _read():
 				try:
@@ -232,6 +233,45 @@ class Runtime:
 			return _match (t)
 		else:
 			return _match
+
+	def split (self, p, *args):
+		def _split (t):
+			r = Lazy.resolve(p)
+			t = Lazy.resolve(t)
+			if isinstance (r, re_type):
+				res = r.split (t)
+			else:
+				res = t.split (r)
+			return self.stream (res)
+		
+		# for partial application
+		if len(args) > 0:
+			t = args[0]
+			return _split (t)
+		else:
+			return _split
+
+	def replace (self, p, *args):
+		def _replace (r, t):
+			pp = Lazy.resolve(p)
+			r = Lazy.resolve(r)
+			t = Lazy.resolve(t)
+			if isinstance (pp, re_type):
+				res = pp.sub (r, t)
+			else:
+				res = t.replace (pp, r)
+			return res
+		
+		# for partial application
+		if len(args) > 0:
+			r = args[0]
+			if len(args) > 1:
+				t = args[1]
+				return _replace (t)
+			else:
+				return functools.partial (_replace, r)
+		else:
+			return functools.partial (functools.partial, _replace)
 
 	def empty (self, obj, *args):
 		obj = Lazy.resolve (obj)

@@ -62,7 +62,9 @@ class Scope:
 			'float': runtime._float,
 			'str': runtime._str,
 			'not': runtime._not,
-			'bool': runtime._bool
+			'bool': runtime._bool,
+			'split': runtime.split,
+			'replace': runtime.replace
 		}
 		return scope
 		

@@ -115,4 +115,4 @@ fxml = read "test.xml";
 nums = stream [1,2,3,4,5];
 zipped = zip (lines file1) (lines file2);
 
-lines file1|grep 'l'|eols
+lines file1|map ((replace ~e~) 't')

@@ -46,12 +46,10 @@ tail = n s:
 takeWhile = f: foldr (x ns: if f x then [x, ns] else eos) eos;
 
 break = p s:
-	go = xs a:
-		x, ns = xs;
-		if eos? x then [a, eos]
-		else if p x then [[x,a], ns]
-		else (left,right=go ns eos; [[x,left], right]);
-	go s eos;
+	x, ns = s;
+	if eos? x then [eos, eos]
+	else if p x then [[x,eos], ns]
+	else (left,right=break p ns; [[x,left], right]);
 
 lines = s:
 	left, ns = break (x:x=='\n') s;
@@ -112,7 +110,8 @@ file3 = write "test3.txt";
 fjson = read "test.json";
 fhtml = read "test.html";
 fxml = read "test.xml";
+fhttp = read "http://docs.python.org/2/library/re.html";
 nums = stream [1,2,3,4,5];
 zipped = zip (lines file1) (lines file2);
 
-lines file1|map ((replace ~e~) 't')
+fhttp|lines

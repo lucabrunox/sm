@@ -137,7 +137,11 @@ class Runtime:
 		return [obj]
 
 	def read (self, uri, *args):
-		h = open (uri, "rb")
+		import urllib2
+		if uri.startswith ("http://"):
+			h = urllib2.urlopen(uri)
+		else:
+			h = io.open (uri, "rb")
 		def _read():
 			c = h.read (1)
 			if not c:
@@ -165,7 +169,7 @@ class Runtime:
 		obj = Lazy.resolve (obj)
 		res = ""
 		for x in obj:
-			res += x
+			res += Lazy.resolve (x)
 		return res
 
 	def fromJson (self, s, *args):
@@ -298,6 +302,6 @@ class Runtime:
 		res = []
 		while isinstance (obj, list):
 			x,ns = obj
-			res.append (Lazy.resolve (x))
+			res.append (x)
 			obj = Lazy.resolve (ns)
 		return res

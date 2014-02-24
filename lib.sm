@@ -102,7 +102,9 @@ pipe = w r:
 
 grep = p: filter (match p);
 
-eols = |zip (repeat '\n')|catS;
+eols = s:
+	x, ns = s;
+	[x, ['\n', eols ns]];
 
 file1 = read "test.txt";
 file2 = read "test2.txt";
@@ -114,4 +116,4 @@ fhttp = read "http://docs.python.org/2/library/re.html";
 nums = stream [1,2,3,4,5];
 zipped = zip (lines file1) (lines file2);
 
-fhttp|tail 10
+file1|lines|eols

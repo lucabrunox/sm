@@ -19,6 +19,14 @@ declare i32 @printf(i8*, ...) #1\n\
 	";
 
 	SmJit* mod = sm_jit_compile ("<stdin>", code);
+	if (!mod) {
+		return 0;
+	}
 	void (*entrypoint)() = (void (*)()) sm_jit_get_function (mod, "_smc_main");
+	if (!entrypoint) {
+		return 0;
+	}
+	
 	entrypoint();
+	return 0;
 }

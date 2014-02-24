@@ -34,15 +34,20 @@ head = n s:
 	else if n < 1 then eos
 	else [x, head (n-1) ns];
 
-tail = n s:
-	go = i xs:
-		x, ns = xs;
-		if eos? x then [0, eos]
-		else (l,t = go (i+1) ns;
-			  if l < n then [l+1, [x, t]] else [l,t]);
-	_, r = go 0 s;
-	r;
+append = e s:
+	x, ns = s;
+	if eos? x then [e, eos]
+	else [x, append e ns];
 	
+tail = n s:
+	go = i a xs:
+		x, ns = xs;
+		if eos? x then a
+		else if i < n then go (i+1) (append x a) ns
+		else (y, ys = a;
+			  go n (append x ys) ns);
+	go 0 eos s;
+
 takeWhile = f: foldr (x ns: if f x then [x, ns] else eos) eos;
 
 break = p s:
@@ -117,4 +122,4 @@ fhttp = read "http://docs.python.org/2/library/re.html";
 nums = stream [1,2,3,4,5];
 zipped = zip (lines file1) (lines file2);
 
-file1|lines|eols
+file1|lines|tail 3

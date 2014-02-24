@@ -104,7 +104,8 @@ grep = p: filter (match p);
 
 eols = s:
 	x, ns = s;
-	[x, ['\n', eols ns]];
+	if eos? x then eos
+	else [x, ['\n', eols ns]];
 
 file1 = read "test.txt";
 file2 = read "test2.txt";

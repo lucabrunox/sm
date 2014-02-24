@@ -64,7 +64,8 @@ class Scope:
 			'not': runtime._not,
 			'bool': runtime._bool,
 			'split': runtime.split,
-			'replace': runtime.replace
+			'replace': runtime.replace,
+			'shell': runtime.shell
 		}
 		return scope
 		
@@ -75,6 +76,7 @@ class Runner:
 		
 		self.empty = scope['empty?']
 		self.eos = scope['eos']
+		self.shell = scope['shell']
 		
 		ast.accept (self)
 		return self.ret
@@ -252,4 +254,7 @@ class Runner:
 			self.ret = Lazy (lambda: Lazy.resolve(obj)[expr.name])
 
 	def visit_literal (self, expr):
-		self.ret = expr.value
+		if expr.shell:
+			self.ret = self.shell (expr.value)
+		else:
+			self.ret = expr.value

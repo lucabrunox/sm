@@ -94,14 +94,14 @@ class Lexer:
 				c += self.read()
 			return Token (c)
 			
-		if c in "'\"~":
+		if c in "'\"~`":
 			q = c
 			s = ""
 			while self.peek() != q:
 				if self.peek() == '\\':
 					self.read()
 					n = self.read ()
-					if q != '~' and n == 'n':
+					if q not in ('~`') and n == 'n':
 						s += '\n'
 					else:
 						s += n
@@ -111,6 +111,8 @@ class Lexer:
 			if q == '~':
 				import re
 				return Token (ttype.REGEX, re.compile(s))
+			elif q == '`':
+				return Token (ttype.SHELL, s)
 			else:
 				return Token (ttype.STR, s)
 			

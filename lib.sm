@@ -122,4 +122,4 @@ fhttp = read "http://docs.python.org/2/library/re.html";
 nums = stream [1,2,3,4,5];
 zipped = zip (lines file1) (lines file2);
 
-file1|lines|tail 3
+`echo ciao`

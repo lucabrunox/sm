@@ -17,7 +17,7 @@
 
 from __future__ import print_function
 import functools
-import io, re
+import io, re, subprocess
 from collections import deque
 
 re_type = type(re.compile('foo'))
@@ -136,12 +136,7 @@ class Runtime:
 			return _func (obj)
 		return [obj]
 
-	def read (self, uri, *args):
-		import urllib2
-		if uri.startswith ("http://"):
-			h = urllib2.urlopen(uri)
-		else:
-			h = io.open (uri, "rb")
+	def _readstream (self, h, *args):
 		def _read():
 			c = h.read (1)
 			if not c:
@@ -149,6 +144,21 @@ class Runtime:
 				return self.eos
 			return [c, Lazy (_read)]
 		return _read()
+		
+	def read (self, uri, *args):
+		import urllib2
+		if uri.startswith ("http://"):
+			h = urllib2.urlopen(uri)
+		else:
+			h = io.open (uri, "rb")
+		return self._readstream(h)
+
+	def shell (self, cmd, *args):
+		import os
+		DEVNULL = open(os.devnull, 'wb')
+		p = subprocess.Popen (['/bin/bash', '-c', cmd], close_fds=True,
+							  stdout=subprocess.PIPE, stderr=DEVNULL)
+		return self._readstream(p.stdout)
 
 	def write (self, uri, *args):
 		h = open (uri, "wb")

@@ -36,6 +36,7 @@ class Parser:
 			ttype.NUM: functools.partial (self.parse_literal, ttype.NUM),
 			ttype.STR: functools.partial (self.parse_literal, ttype.STR),
 			ttype.REGEX: functools.partial (self.parse_literal, ttype.REGEX),
+			ttype.SHELL: functools.partial (self.parse_literal, ttype.SHELL),
 			'(': self.parse_inner,
 			'[': self.parse_list
 		}
@@ -255,6 +256,8 @@ class Parser:
 	def parse_literal (self, t):
 		self.expect (t)
 		expr = Literal (self.cur.value)
+		if t == ttype.SHELL:
+			expr.shell = True
 		self.next ()
 		return expr
 		

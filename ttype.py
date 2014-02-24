@@ -19,7 +19,8 @@ tnames = [
 	'ID',
 	'NUM',
 	'STR',
-	'REGEX'
+	'REGEX',
+	'SHELL'
 ]
 for tname in tnames:
 	locals()[tname] = tname

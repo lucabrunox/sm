@@ -1,8 +1,17 @@
 #include <stdlib.h>
 #include <iostream>
+#include <llvm/Config/llvm-config.h>
+
+#if LLVM_VERSION_MINOR == 2
+#include <llvm/LLVMContext.h>
+#include <llvm/Support/IRReader.h>
+#include <llvm/Module.h>
+#else
+#include <llvm/IRReader/IRReader.h>
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Module.h>
-#include <llvm/IRReader/IRReader.h>
+#endif
+
 #include <llvm/Support/MemoryBuffer.h>
 #include <llvm/Support/SourceMgr.h>
 #include <llvm/Support/FormattedStream.h>

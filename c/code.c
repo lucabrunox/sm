@@ -91,6 +91,12 @@ void sm_code_emit_rawv (SmCode* code, const char* fmt, va_list ap) {
 	block->len += clen;
 }
 
+int sm_code_emit_new_thunk (SmCode* code) {
+	int thunk_size = sizeof(void*)*(3); // function pointer + cached value + captured scope
+	int ptr = CALL("i8* @malloc(i32 %d)", thunk_size);
+	return ptr;
+}
+
 /* link all the blocks */
 char* sm_code_link (SmCode* code) {
 	int size = 0;

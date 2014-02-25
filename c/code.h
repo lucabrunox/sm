@@ -3,7 +3,20 @@
 
 #include <stdarg.h>
 
-#define SM_CODE_MAXCHUNK 1024
+#define EMIT_(s,...) sm_code_emit(code, s, ##__VA_ARGS__)
+#define EMIT(s,...) sm_code_emit_temp(code, s, ##__VA_ARGS__)
+#define DECLARE(s,...) EMIT_("declare " s, ##__VA_ARGS__)
+#define DEFINE_STRUCT(s,fields,...) EMIT_("%%struct." s " = type { " fields " }", ##__VA_ARGS__)
+#define STRUCT(s) "%%struct." s
+#define FUNC(s) "@_smc_" s
+#define BEGIN_FUNC(ret,name,params,...) EMIT_("define " ret " @_smc_" name "(" params ") {", ##__VA_ARGS__)
+#define END_FUNC() EMIT_("}")
+#define CALL(s,...) EMIT("call " s, ##__VA_ARGS__);
+#define BITCAST(f,t,...) EMIT("bitcast " f " to " t, ##__VA_ARGS__)
+#define THUNK_NEW() sm_code_emit_new_thunk(code)
+#define SIZEOF(t,...) sizeptr_tmp=EMIT("getelementptr " t " null, i64 1, i32 0",##__VA_ARGS__); \
+                  size_tmp=EMIT("ptrtoint i32* %%%d to i32", sizeptr_tmp)
+#define RET(t,v,...) EMIT_("ret " t v, ##__VA_ARGS__)
 
 typedef struct _SmCode SmCode;
 typedef struct _SmCodeBlock SmCodeBlock;
@@ -16,6 +29,8 @@ int sm_code_emit_tempv (SmCode* code, const char* fmt, va_list ap);
 void sm_code_emit_raw (SmCode* code, const char* fmt, ...) __attribute__ ((format (printf, 2, 3)));
 void sm_code_emit_rawv (SmCode* code, const char* fmt, va_list ap);
 void sm_code_emit_char (SmCode* code, char ch);
+
+int sm_code_emit_new_thunk (SmCode* code);
 
 SmCodeBlock* sm_code_new_block (SmCode* code);
 void sm_code_push_block (SmCode* code, SmCodeBlock* block);

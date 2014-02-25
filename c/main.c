@@ -3,20 +3,6 @@
 #include "llvm.h"
 #include "code.h"
 
-#define EMIT_(s,...) sm_code_emit(code, s, ##__VA_ARGS__)
-#define EMIT(s,...) sm_code_emit_temp(code, s, ##__VA_ARGS__)
-#define DECLARE(s,...) EMIT_("declare " s, ##__VA_ARGS__)
-#define DEFINE_STRUCT(s,fields,...) EMIT_("%%struct." s " = type { " fields " }", ##__VA_ARGS__)
-#define STRUCT(s) "%%struct." s
-#define FUNC(s) "@_smc_" s
-#define BEGIN_FUNC(ret,name,params,...) EMIT_("define " ret " @_smc_" name "(" params ") {", ##__VA_ARGS__)
-#define END_FUNC() EMIT_("}")
-#define CALL(s,...) EMIT("call " s, ##__VA_ARGS__);
-#define BITCAST(f,t,...) EMIT("bitcast " f " to " t, ##__VA_ARGS__)
-#define SIZEOF(t,...) sizeptr_tmp=EMIT("getelementptr " t " null, i64 1, i32 0",##__VA_ARGS__); \
-                  size_tmp=EMIT("ptrtoint i32* %%%d to i32", sizeptr_tmp)
-#define RET(t,v,...) EMIT_("ret " t v, ##__VA_ARGS__)
-
 int main() {
 	sm_jit_init ();
 
@@ -32,18 +18,9 @@ int main() {
 	sm_code_pop_block (code);
 
 	sm_code_push_block (code, sm_code_new_block (code));
-	BEGIN_FUNC(STRUCT("thunk*"), "thunk_new", "");
-	SIZEOF(STRUCT("thunk*"));
-	int ptr = CALL("i8* @malloc(i32 %%%d)", size_tmp);
-	int cast = BITCAST("i8* %%%d", STRUCT("thunk*"), ptr);
-	RET(STRUCT("thunk*"), "%%%d", cast);
-	END_FUNC();
-	sm_code_pop_block (code);
-	
-	sm_code_push_block (code, sm_code_new_block (code));
 	BEGIN_FUNC("void", "main", "");
 	CALL ("i32 (i8*, ...)* @printf(i8* getelementptr ([7 x i8]* @.str, i32 0, i32 0))");
-	CALL (STRUCT("thunk*") FUNC("thunk_new") "()");
+	THUNK_NEW ();
 	RET("void", "");
 	END_FUNC();
 	sm_code_pop_block (code);

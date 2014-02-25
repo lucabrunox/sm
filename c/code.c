@@ -1,11 +1,13 @@
 #include <stdlib.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
 #include "code.h"
 
 struct _SmCodeBlock {
 	int allocsize;
-
+	int varcount;
+	
 	int len;
 	char* buf;
 
@@ -25,16 +27,39 @@ SmCode* sm_code_new (void) {
 	return ret;
 }
 
-void sm_code_emit (SmCode* code, const char* content) {
-	sm_code_emit_raw (code, content);
+void sm_code_emit (SmCode* code, const char* fmt, ...) {
+	va_list ap;
+	va_start(ap, fmt);
+	sm_code_emitv (code, fmt, ap);
+	va_end(ap);
+}
+
+void sm_code_emitv (SmCode* code, const char* fmt, va_list ap) {
+	sm_code_emit_rawv (code, fmt, ap);
 	sm_code_emit_char (code, '\n');
+}
+
+int sm_code_emit_temp (SmCode* code, const char* fmt, ...) {
+	va_list ap;
+	va_start(ap, fmt);
+	int res = sm_code_emit_tempv (code, fmt, ap);
+	va_end(ap);
+	return res;
+}
+
+int sm_code_emit_tempv (SmCode* code, const char* fmt, va_list ap) {
+	code->current->varcount++;
+	sm_code_emit_raw (code, "%%%d = ", code->current->varcount);
+	sm_code_emit_rawv (code, fmt, ap);
+	sm_code_emit_char (code, '\n');
+	return code->current->varcount;
 }
 
 void sm_code_emit_char (SmCode* code, char ch) {
 	SmCodeBlock* block = code->current;
 	
-	if (block->allocsize - block->len <= 2) {
-		block->allocsize *= 2;
+	while (block->allocsize - block->len <= 2) {
+		block->allocsize += block->allocsize*2+2;
 		block->buf = (char*) realloc (block->buf, block->allocsize);
 	}
 
@@ -42,8 +67,17 @@ void sm_code_emit_char (SmCode* code, char ch) {
 	block->buf[block->len] = '\0';
 }
 
-void sm_code_emit_raw (SmCode* code, const char* content) {
-	int clen = strnlen(content, SM_CODE_MAXCHUNK);
+void sm_code_emit_raw (SmCode* code, const char* fmt, ...) {
+	va_list ap;
+	va_start(ap, fmt);
+	sm_code_emit_rawv (code, fmt, ap);
+	va_end(ap);
+}
+
+void sm_code_emit_rawv (SmCode* code, const char* fmt, va_list ap) {
+	char* content = NULL;
+	int clen = vasprintf(&content, fmt, ap);
+	
 	SmCodeBlock* block = code->current;
 	
 	if (clen+1 > (block->allocsize - block->len)) {
@@ -53,7 +87,7 @@ void sm_code_emit_raw (SmCode* code, const char* content) {
 		block->buf = (char*) realloc (block->buf, block->allocsize);
 	}
 	
-	strncat (block->buf, content, clen);
+	strncpy (block->buf+block->len, content, clen);
 	block->len += clen;
 }
 
@@ -66,8 +100,12 @@ char* sm_code_link (SmCode* code) {
 	size++;
 	
 	char* res = (char*) malloc (size);
+	res[0] = '\0';
+
+	char* p = res;
 	for (int i=0; i < code->len; i++) {
-		strncat (res, code->blocks[i].buf, code->blocks[i].len);
+		strncpy (p, code->blocks[i].buf, code->blocks[i].len);
+		p += code->blocks[i].len;
 	}
 
 	return res;
@@ -76,6 +114,7 @@ char* sm_code_link (SmCode* code) {
 SmCodeBlock* sm_code_new_block (SmCode* code) {
 	code->len++;
 	code->blocks = (SmCodeBlock*) realloc (code->blocks, sizeof(SmCodeBlock)*code->len);
+	memset (&code->blocks[code->len-1], '\0', sizeof (SmCodeBlock));
 	return &code->blocks[code->len-1];
 }
 

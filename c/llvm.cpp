@@ -19,9 +19,16 @@
 #include <llvm/Support/TargetSelect.h>
 #include <llvm/ExecutionEngine/JIT.h>
 #include <llvm/Support/raw_ostream.h>
+#include <llvm/Assembly/AssemblyAnnotationWriter.h>
+
 #include "llvm.h"
 
 using namespace llvm;
+
+struct _SmJit {
+	void* llvm_module;
+	void* llvm_engine;
+};
 
 void sm_jit_init (void) {
 	InitializeNativeTarget();
@@ -33,8 +40,7 @@ SmJit* sm_jit_compile (const char* name, const char* code) {
 
 	SMDiagnostic err;
     Module *mod = ParseIR(MemoryBuffer::getMemBuffer(code), err, context);
-
-    if (!mod) {
+	if (!mod) {
         err.print(name, errs());
         return NULL;
     }
@@ -46,12 +52,28 @@ void* sm_jit_get_function (SmJit* jit, const char* name) {
 	Module* mod = (Module*) jit;
 
 	std::string error;
-	ExecutionEngine* engine = ExecutionEngine::createJIT(mod, &error);
-    if (!engine) {
+	ExecutionEngine *engine = ExecutionEngine::createJIT(mod, &error);
+	if (!engine) {
 		std::cout << error << std::endl;
-        return NULL;
-    }
+		return NULL;
+	}
 
 	Function *entry_point = mod->getFunction("_smc_main");
 	return engine->getPointerToFunction(entry_point);
+}
+
+void sm_jit_dump_ir (SmJit* jit) {
+	Module* mod = (Module*) jit;
+	mod->dump();
+}
+
+void sm_jit_dump_asm (SmJit* jit) {
+	Module* mod = (Module*) jit;
+	EngineBuilder builder (mod);
+	TargetMachine *tm = builder.selectTarget();
+	tm->Options.PrintMachineCode = 1;
+	ExecutionEngine *engine = builder.create(tm);
+
+	Function *entry_point = mod->getFunction("_smc_main");
+	engine->getPointerToFunction(entry_point);
 }

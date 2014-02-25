@@ -20,7 +20,7 @@ void sm_code_emit_char (SmCode* code, char ch) {
 		code->buf = (char*) realloc (code->buf, code->allocsize);
 	}
 
-	code->buf[++code->len] = ch;
+	code->buf[code->len++] = ch;
 	code->buf[code->len] = '\0';
 }
 

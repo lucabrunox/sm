@@ -1,3 +1,9 @@
+#include <stdlib.h>
+
+struct thunk {
+	int foo;
+};
+
 void main () {
-	printf("hello\n");
+	struct thunk* foo = malloc(sizeof(struct thunk));
 }

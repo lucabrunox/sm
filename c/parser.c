@@ -78,7 +78,7 @@ FUNC(assign) {
 		char* name = identifier(parser);
 		UT_array* names;
 		utarray_new (names, &ut_str_icd);
-		utarray_push_back (names, name);
+		utarray_push_back (names, &name);
 
 		while (ACCEPT (",")) {
 			if (TYPE == "id") {
@@ -139,7 +139,6 @@ SmExpr* sm_parser_parse (SmParser* parser, SmLexer lexer) {
 	NEXT;
 	SmExpr* expr = seq(parser);
 	CHECK(expr);
-	puts(TYPE);
 	EXPECT("eof");
 	return expr;
 }

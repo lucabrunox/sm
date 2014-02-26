@@ -32,9 +32,10 @@ static char* dump_member_expr (SmMemberExpr* expr) {
 
 static char* dump_assign_expr (SmAssignExpr* expr) {
 	char* names = strdup("");
-	int first = 1;
-	char** p;
 	char* old;
+	
+	char** p = NULL;
+	int first = 1;
 	while ((p=(char**)utarray_next(expr->names, p))) {
 		old = names;
 		if (first) {
@@ -61,15 +62,15 @@ static char* dump_seq_expr (SmSeqExpr* expr) {
 	SmAssignList* a;
 	DL_FOREACH(expr->assigns, a) {
 		old = res;
-		inner = sm_ast_dump (EXPR(a));
-		res = str("%s%s;\n", old, inner);
+		inner = sm_ast_dump (EXPR(a->expr));
+		res = str("%s%s;\n", res, inner);
 		free (inner);
 		free (old);
 	}
 
 	old = res;
 	inner = sm_ast_dump (expr->result);
-	res = str("%s%s)", old, inner);
+	res = str("%s%s)", res, inner);
 	free (old);
 	free (inner);
 	return res;

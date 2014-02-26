@@ -8,7 +8,7 @@
 #define PEEK (*(lexer->ptr))
 #define READ (PEEK ? ((PEEK == '\n' ? (lexer->row++, lexer->col=0) : lexer->col++), *(lexer->ptr)++) : 0)
 #define LEX1(e) if (c == e[0]) { READ; return { .type=e }; }
-#define LEX2(e1,e2) if (c == e1[0]) { READ; if (PEEK == e2[1]) { READ; return { .type=e1 e2 }; } } else { return { .type=e1 }; }
+#define LEX2(e1,e2) if (c == e1[0]) { READ; if (PEEK == e2[0]) { READ; return { .type=e1 e2 }; } else { return { .type=e1 }; } }
 
 void sm_lexer_init (SmLexer* lexer, const char* buf) {
 	lexer->ptr = buf;
@@ -29,6 +29,9 @@ SmToken sm_lexer_next (SmLexer* lexer) {
 		while (PEEK != '\n') READ;
 		while (isspace (PEEK)) READ;
 		c = PEEK;
+	}
+	if (!c) {
+		return { .type="eof" };
 	}
 
 	if (isalpha (c)) {

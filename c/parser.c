@@ -7,6 +7,7 @@
 #include "lexer.h"
 #include "parser.h"
 #include "ast.h"
+#include "astdumper.h"
 
 struct _SmParser {
 	SmLexer lexer;
@@ -38,6 +39,7 @@ void sm_parser_free (SmParser* parser) {
 #define NEW(n,x,t) x* n = (x*)calloc(1, sizeof(x)); (n)->base.type=t;
 #define SAVE (*parser)
 #define RESTORE(x) sm_token_destroy(&parser->cur); *parser = x
+#define CHECK(x) if (!x) return NULL
 
 STATIC char* identifier (SmParser* parser) {
 	EXPECT("id");
@@ -49,6 +51,8 @@ STATIC char* identifier (SmParser* parser) {
 
 FUNC2(member) {
 	char* id = identifier(parser);
+	CHECK(id);
+	
 	NEW(expr, SmMemberExpr, SM_MEMBER_EXPR);
 	expr->inner = inner;
 	expr->name = id;
@@ -59,6 +63,9 @@ FUNC(primary) {
 	SmExpr* expr = NULL;
 	if (TYPE == "id") {
 		expr = member(parser, NULL);
+	} else {
+		printf("unexpected %s", TYPE);
+		return NULL;
 	}
 	
 	return expr;
@@ -68,10 +75,10 @@ FUNC(assign) {
 	SmParser begin = SAVE;
 
 	if (TYPE == "id") {
+		char* name = identifier(parser);
 		UT_array* names;
 		utarray_new (names, &ut_str_icd);
-		utarray_push_back (names, &STR);
-		STR=NULL;
+		utarray_push_back (names, name);
 
 		while (ACCEPT (",")) {
 			if (TYPE == "id") {
@@ -82,10 +89,12 @@ FUNC(assign) {
 			}
 		}
 
-		if (TYPE == "=") {
+		if (ACCEPT ("=")) {
 			SmExpr* expr = primary(parser);
+			CHECK(expr);
 			NEW(a, SmAssignExpr, SM_ASSIGN_EXPR);
 			a->names = names;
+			a->value = expr;
 			return EXPR(a);
 		} else {
 			goto rollback;
@@ -101,6 +110,7 @@ FUNC(assign) {
 
 FUNC(seq) {
 	SmExpr* expr = assign(parser);
+	CHECK(expr);
 	if (expr->type != SM_ASSIGN_EXPR) {
 		return expr;
 	}
@@ -112,6 +122,7 @@ FUNC(seq) {
 		DL_APPEND(seq->assigns, entry);
 
 		expr = assign(parser);
+		CHECK(expr);
 		if (expr->type != SM_ASSIGN_EXPR) {
 			seq->result = expr;
 			break;
@@ -127,6 +138,8 @@ SmExpr* sm_parser_parse (SmParser* parser, SmLexer lexer) {
 	
 	NEXT;
 	SmExpr* expr = seq(parser);
+	CHECK(expr);
+	puts(TYPE);
 	EXPECT("eof");
 	return expr;
 }

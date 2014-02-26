@@ -4,7 +4,7 @@
 #include "ast.h"
 #include "llvm.h"
 
-SmJit* sm_compile (SmExpr* expr);
+SmJit* sm_compile (const char* name, SmExpr* expr);
 void sm_run (SmJit* mod);
 
 #endif

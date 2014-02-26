@@ -17,7 +17,9 @@ static char* str(const char* fmt, ...) {
 	return res;
 }
 
-static char* dump_member_expr (SmMemberExpr* expr) {
+#define FUNC(n,x) static char* n (x* expr)
+
+FUNC(dump_member_expr, SmMemberExpr) {
 	if (expr->inner) {
 		char* inner = sm_ast_dump (expr->inner);
 		char* res = str("%s.%s", inner, expr->name);
@@ -28,7 +30,7 @@ static char* dump_member_expr (SmMemberExpr* expr) {
 	}
 }
 
-static char* dump_assign_expr (SmAssignExpr* expr) {
+FUNC(dump_assign_expr, SmAssignExpr) {
 	char* names = strdup("");
 	char* old;
 	
@@ -53,7 +55,7 @@ static char* dump_assign_expr (SmAssignExpr* expr) {
 	return names;
 }
 
-static char* dump_seq_expr (SmSeqExpr* expr) {
+FUNC(dump_seq_expr, SmSeqExpr) {
 	char* res = strdup("(");
 	char* old;
 	char* inner;
@@ -74,9 +76,10 @@ static char* dump_seq_expr (SmSeqExpr* expr) {
 	return res;
 }
 
-static char* dump_literal (SmLiteral* expr) {
+FUNC(dump_literal, SmLiteral) {
 	char* res;
 	if (expr->str) {
+		// FIXME: escape
 		asprintf(&res, "\"%s\"", expr->str);
 	} else {
 		asprintf(&res, "%g", expr->num);

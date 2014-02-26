@@ -104,6 +104,12 @@ SmToken sm_lexer_next (SmLexer* lexer) {
 		while (PEEK != q) {
 			if (PEEK == '\\') {
 				READ;
+				if ((q == '\'' || q == '"') && PEEK == 'n') {
+					char* old = str;
+					asprintf(&str, "%s\n", str ? str : "", READ);
+					free(old);
+					continue;
+				}
 			}
 			if (!PEEK) {
 				return { .type="unterminated string" };

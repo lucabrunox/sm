@@ -24,11 +24,10 @@ void sm_parser_free (SmParser* parser) {
 	free (parser);
 }
 
-#define STATIC static
 #define NEXT (sm_token_destroy(&parser->cur), parser->cur = sm_lexer_next(&parser->lexer), parser->cur)
 #define PTOK(t) puts(t.type)
-#define FUNC(n) STATIC SmExpr* n (SmParser* parser)
-#define FUNC2(n) STATIC SmExpr* n (SmParser* parser, SmExpr* inner)
+#define FUNC(n) static SmExpr* n (SmParser* parser)
+#define FUNC2(n) static SmExpr* n (SmParser* parser, SmExpr* inner)
 #define TYPE (parser->cur.type)
 #define EXPECT(x) if (TYPE != x) { puts("expected " x); return NULL; }
 #define ACCEPT(x) ((TYPE == x) ? (NEXT, 1) : 0)
@@ -41,7 +40,7 @@ void sm_parser_free (SmParser* parser) {
 #define CHECK(x) if (!x) return NULL
 #define CASE(x) (TYPE == x)
 
-STATIC char* identifier (SmParser* parser) {
+static char* identifier (SmParser* parser) {
 	EXPECT("id");
 	char* val = STR;
 	STR=NULL;

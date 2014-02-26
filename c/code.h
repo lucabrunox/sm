@@ -24,13 +24,12 @@ typedef struct _SmCodeBlock SmCodeBlock;
 SmCode* sm_code_new (void);
 void sm_code_emit (SmCode* code, const char* fmt, ...) __attribute__ ((format (printf, 2, 3)));
 void sm_code_emitv (SmCode* code, const char* fmt, va_list ap);
+int sm_code_get_temp (SmCode* code);
 int sm_code_emit_temp (SmCode* code, const char* fmt, ...) __attribute__ ((format (printf, 2, 3)));
 int sm_code_emit_tempv (SmCode* code, const char* fmt, va_list ap);
 void sm_code_emit_raw (SmCode* code, const char* fmt, ...) __attribute__ ((format (printf, 2, 3)));
 void sm_code_emit_rawv (SmCode* code, const char* fmt, va_list ap);
 void sm_code_emit_char (SmCode* code, char ch);
-
-int sm_code_emit_new_thunk (SmCode* code);
 
 SmCodeBlock* sm_code_new_block (SmCode* code);
 void sm_code_push_block (SmCode* code, SmCodeBlock* block);

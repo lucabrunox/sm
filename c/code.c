@@ -2,7 +2,9 @@
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
+
 #include "code.h"
+#include "uthash/src/utlist.h"
 
 struct _SmCodeBlock {
 	int allocsize;
@@ -12,12 +14,14 @@ struct _SmCodeBlock {
 	char* buf;
 
 	SmCodeBlock* parent;
+	SmCodeBlock* next;
 };
 
 struct _SmCode {
 	int refcount;
 	int len;
-	SmCodeBlock* blocks;
+	SmCodeBlock* head;
+	SmCodeBlock* tail;
 	SmCodeBlock* current;
 };
 
@@ -39,6 +43,10 @@ void sm_code_emitv (SmCode* code, const char* fmt, va_list ap) {
 	sm_code_emit_char (code, '\n');
 }
 
+int sm_code_get_temp (SmCode* code) {
+	return ++code->current->varcount;
+}
+
 int sm_code_emit_temp (SmCode* code, const char* fmt, ...) {
 	va_list ap;
 	va_start(ap, fmt);
@@ -48,11 +56,12 @@ int sm_code_emit_temp (SmCode* code, const char* fmt, ...) {
 }
 
 int sm_code_emit_tempv (SmCode* code, const char* fmt, va_list ap) {
-	code->current->varcount++;
-	sm_code_emit_raw (code, "%%%d = ", code->current->varcount);
+	SmCodeBlock* block = code->current;
+	block->varcount++;
+	sm_code_emit_raw (code, "%%%d = ", block->varcount);
 	sm_code_emit_rawv (code, fmt, ap);
 	sm_code_emit_char (code, '\n');
-	return code->current->varcount;
+	return block->varcount;
 }
 
 void sm_code_emit_char (SmCode* code, char ch) {
@@ -91,17 +100,13 @@ void sm_code_emit_rawv (SmCode* code, const char* fmt, va_list ap) {
 	block->len += clen;
 }
 
-int sm_code_emit_new_thunk (SmCode* code) {
-	int thunk_size = sizeof(void*)*(3); // function pointer + cached value + captured scope
-	int ptr = CALL("i8* @malloc(i32 %d)", thunk_size);
-	return ptr;
-}
-
 /* link all the blocks */
 char* sm_code_link (SmCode* code) {
 	int size = 0;
-	for (int i=0; i < code->len; i++) {
-		size += code->blocks[i].len;
+	SmCodeBlock* cur = code->head;
+	while (cur) {
+		size += cur->len;
+		cur = cur->next;
 	}
 	size++;
 	
@@ -109,19 +114,24 @@ char* sm_code_link (SmCode* code) {
 	res[0] = '\0';
 
 	char* p = res;
-	for (int i=0; i < code->len; i++) {
-		strncpy (p, code->blocks[i].buf, code->blocks[i].len);
-		p += code->blocks[i].len;
+	cur = code->head;
+	while (cur) {
+		strncpy (p, cur->buf, cur->len);
+		p += cur->len;
+		cur = cur->next;
 	}
 
 	return res;
 }
 
 SmCodeBlock* sm_code_new_block (SmCode* code) {
-	code->len++;
-	code->blocks = (SmCodeBlock*) realloc (code->blocks, sizeof(SmCodeBlock)*code->len);
-	memset (&code->blocks[code->len-1], '\0', sizeof (SmCodeBlock));
-	return &code->blocks[code->len-1];
+	SmCodeBlock* block = (SmCodeBlock*) calloc(1, sizeof(SmCodeBlock));
+	if (!code->head) {
+		code->head = code->tail = block;
+	} else {
+		code->tail->next = block;
+	}
+	return block;
 }
 
 void sm_code_push_block (SmCode* code, SmCodeBlock* block) {
@@ -133,7 +143,6 @@ void sm_code_pop_block (SmCode* code) {
 	code->current = code->current->parent;
 }
 
-/* parser is not multi threaded */
 SmCode* sm_code_ref (SmCode* code) {
 	code->refcount++;
 	return code;
@@ -141,11 +150,11 @@ SmCode* sm_code_ref (SmCode* code) {
 
 void sm_code_unref (SmCode* code) {
 	if (!--code->refcount) {
-		for (int i=0; i < code->len; i++) {
-			free (code->blocks[i].buf);
-		}
-		if (code->blocks != NULL) {
-			free (code->blocks);
+		SmCodeBlock* cur = code->head;
+		while (cur) {
+			SmCodeBlock* tmp = cur->next;
+			free (cur);
+			cur = tmp;
 		}
 		free (code);
 	}

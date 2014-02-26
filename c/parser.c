@@ -27,7 +27,6 @@ void sm_parser_free (SmParser* parser) {
 #define STATIC static
 #define NEXT (sm_token_destroy(&parser->cur), parser->cur = sm_lexer_next(&parser->lexer), parser->cur)
 #define PTOK(t) puts(t.type)
-#define EXPR(x) ((SmExpr*)x)
 #define FUNC(n) STATIC SmExpr* n (SmParser* parser)
 #define FUNC2(n) STATIC SmExpr* n (SmParser* parser, SmExpr* inner)
 #define TYPE (parser->cur.type)
@@ -40,6 +39,7 @@ void sm_parser_free (SmParser* parser) {
 #define SAVE (*parser)
 #define RESTORE(x) sm_token_destroy(&parser->cur); *parser = x
 #define CHECK(x) if (!x) return NULL
+#define CASE(x) (TYPE == x)
 
 STATIC char* identifier (SmParser* parser) {
 	EXPECT("id");
@@ -61,8 +61,14 @@ FUNC2(member) {
 
 FUNC(primary) {
 	SmExpr* expr = NULL;
-	if (TYPE == "id") {
+	if (CASE("id")) {
 		expr = member(parser, NULL);
+	} else if (CASE("str")) {
+		NEW(tmp, SmLiteral, SM_LITERAL);
+		tmp->str = STR;
+		STR=NULL;
+		NEXT;
+		expr = EXPR(tmp);
 	} else {
 		printf("unexpected %s", TYPE);
 		return NULL;
@@ -74,14 +80,14 @@ FUNC(primary) {
 FUNC(assign) {
 	SmParser begin = SAVE;
 
-	if (TYPE == "id") {
+	if (CASE("id")) {
 		char* name = identifier(parser);
 		UT_array* names;
 		utarray_new (names, &ut_str_icd);
 		utarray_push_back (names, &name);
 
 		while (ACCEPT (",")) {
-			if (TYPE == "id") {
+			if (CASE("id")) {
 				utarray_push_back (names, &STR);
 				STR=NULL;
 			} else {

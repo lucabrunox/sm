@@ -46,7 +46,7 @@ int main() {
 	entrypoint();
 
 	SmLexer lexer;
-	sm_lexer_init (&lexer, "asd = dsa; asd");
+	sm_lexer_init (&lexer, "asd = 'foo'; asd");
 	SmParser* parser = sm_parser_new ();
 	SmExpr* expr = sm_parser_parse (parser, lexer);
 	if (expr) {

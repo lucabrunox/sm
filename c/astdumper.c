@@ -8,8 +8,6 @@
 #include "ast.h"
 #include "astdumper.h"
 
-#define EXPR(x) ((SmExpr*) x)
-
 static char* str(const char* fmt, ...) {
 	va_list ap;
 	va_start(ap, fmt);
@@ -76,11 +74,22 @@ static char* dump_seq_expr (SmSeqExpr* expr) {
 	return res;
 }
 
+static char* dump_literal (SmLiteral* expr) {
+	char* res;
+	if (expr->str) {
+		asprintf(&res, "\"%s\"", expr->str);
+	} else {
+		asprintf(&res, "%g", expr->num);
+	}
+	return res;
+}
+
 #define CAST(x) (char* (*)(SmExpr*))(x)
 char* (*dump_table[])(SmExpr*) = {
 	[SM_MEMBER_EXPR] = CAST(dump_member_expr),
 	[SM_SEQ_EXPR] = CAST(dump_seq_expr),
-	[SM_ASSIGN_EXPR] = CAST(dump_assign_expr)
+	[SM_ASSIGN_EXPR] = CAST(dump_assign_expr),
+	[SM_LITERAL] = CAST(dump_literal)
 };
 
 char* sm_ast_dump (SmExpr* expr) {

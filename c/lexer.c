@@ -96,6 +96,27 @@ SmToken sm_lexer_next (SmLexer* lexer) {
 	LEX2(">", "=");
 	LEX2("*", "*");
 	LEX2("/", "/");
+
+	if (strchr("'\"~`", c)) {
+		char q = c;
+		char* str = NULL;
+		READ;
+		while (PEEK != q) {
+			if (PEEK == '\\') {
+				READ;
+			}
+			if (!PEEK) {
+				return { .type="unterminated string" };
+			}
+			char* old = str;
+			asprintf(&str, "%s%c", str ? str : "", READ);
+			free(old);
+		}
+		READ;
+		SmToken t = { .type="str" };
+		t.str = str;
+		return t;
+	}
 	
 	return { .type="unknown" };
 }

@@ -46,10 +46,13 @@ int main() {
 	entrypoint();
 
 	SmLexer lexer;
-	sm_lexer_init (&lexer, "asd");
+	sm_lexer_init (&lexer, "asd = dsa; asd");
 	SmParser* parser = sm_parser_new ();
 	SmExpr* expr = sm_parser_parse (parser, lexer);
-	puts (sm_ast_dump (expr));
+	char* dump = sm_ast_dump (expr);
+	if (dump != NULL) {
+		puts (dump);
+	}
 
 	return 0;
 }

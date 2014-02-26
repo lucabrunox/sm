@@ -2,6 +2,9 @@
 #include <stdlib.h>
 #include "llvm.h"
 #include "code.h"
+#include "lexer.h"
+#include "parser.h"
+#include "astdumper.h"
 
 int main() {
 	sm_jit_init ();
@@ -34,13 +37,19 @@ int main() {
 	}
 
 	/* sm_jit_dump_asm (mod); */
-	sm_jit_dump_ir (mod);
+	/* sm_jit_dump_ir (mod); */
 	
 	void (*entrypoint)() = (void (*)()) sm_jit_get_function (mod, FUNC("main"));
 	if (!entrypoint) {
 		return 0;
 	}
 	entrypoint();
+
+	SmLexer lexer;
+	sm_lexer_init (&lexer, "asd");
+	SmParser* parser = sm_parser_new ();
+	SmExpr* expr = sm_parser_parse (parser, lexer);
+	puts (sm_ast_dump (expr));
 
 	return 0;
 }

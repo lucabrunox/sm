@@ -70,14 +70,14 @@ DEFUNC(compile_seq_expr, SmSeqExpr) {
 	int varid = 0;
 	SmAssignList* el = NULL;
 	DL_FOREACH(expr->assigns, el) {
-		char** p = NULL;
-		while ( (p=(char**)utarray_next(el->expr->names, p))) {
-			const char* name = *p;
+		GPtrArray* names = el->expr->names;
+		for (int i=0; i < names->len; i++) {
+			const char* name = (const char*) names->pdata[i];
 
 			SmScope* entry;
 			HASH_FIND_STR(comp->scope, name, entry);
 			if (entry) {
-				printf("shadowing %s\n", *p);
+				printf("shadowing %s\n", name);
 				exit(0);
 			}
 
@@ -96,10 +96,9 @@ DEFUNC(compile_seq_expr, SmSeqExpr) {
 	/* assign values to scope */
 	el = NULL;
 	DL_FOREACH(expr->assigns, el) {
-		// FIXME: fuckoff utarray
-		char** p = NULL;
-		while ( (p=(char**)utarray_next(el->expr->names, p))) {
-			const char* name = *p;
+		GPtrArray* names = el->expr->names;
+		if (names->len == 1) {
+			const char* name = (const char*) names->pdata[0];
 			SmVarType value = VISIT(el->expr->value);
 			
 			SmScope* found;

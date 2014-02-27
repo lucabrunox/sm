@@ -1,5 +1,6 @@
 #include <stdlib.h>
 #include <stdio.h>
+#include <glib.h>
 
 #include "uthash/src/utlist.h"
 #include "uthash/src/utarray.h"
@@ -81,13 +82,12 @@ FUNC(assign) {
 
 	if (CASE("id")) {
 		char* name = identifier(parser);
-		UT_array* names;
-		utarray_new (names, &ut_str_icd);
-		utarray_push_back (names, &name);
+		GPtrArray* names = g_ptr_array_new_with_free_func ((GDestroyNotify) g_free);
+		g_ptr_array_add (names, name);
 
 		while (ACCEPT (",")) {
 			if (CASE("id")) {
-				utarray_push_back (names, &STR);
+				g_ptr_array_add (names, STR);
 				STR=NULL;
 			} else {
 				goto rollback;
@@ -106,7 +106,7 @@ FUNC(assign) {
 		}
 
 	rollback:
-		utarray_free (names);
+		g_ptr_array_unref (names);
 		RESTORE(begin);
 	}
 		

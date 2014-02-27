@@ -1,7 +1,7 @@
 #ifndef SM_AST_H
 #define SM_AST_H
 
-#include "uthash/src/utarray.h"
+#include <glib.h>
 
 #define EXPR(x) ((SmExpr*)x)
 
@@ -24,7 +24,7 @@ typedef struct {
 
 typedef struct {
 	SmExpr base;
-	UT_array* names;
+	GPtrArray* names;
 	SmExpr* value;
 } SmAssignExpr;
 

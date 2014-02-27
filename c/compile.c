@@ -15,6 +15,7 @@
 #define POP_BLOCK sm_code_pop_block(code)
 #define RETVAL(x) SmVarType _res_var=x; return _res_var
 #define VISIT(x) call_compile_table (comp, EXPR(x))
+#define PUSH_NEW_BLOCK PUSH_BLOCK(sm_code_new_block (code))
 
 #define TAG(x) (x & 5)
 #define SMI_TAG 1
@@ -39,9 +40,21 @@ typedef struct {
 	SmVarType ret;
 	SmScope* scope;
 	int scopeid;
+	int thunkid;
 } SmCompile;
 
 static SmVarType call_compile_table (SmCompile* comp, SmExpr* expr);
+
+static int create_thunk (SmCompile* comp, int thunkid) {
+	GET_CODE;
+	int thunksizeptr = EMIT("getelementptr %%thunk* null, i32 1, i32 0");
+	int thunksize = EMIT("ptrtoint %%thunkfunc* %%%d to i64", thunksizeptr);
+	int alloc = EMIT("call i8* @malloc(i32 %d)", thunksize);
+	int thunk = EMIT("bitcast i8* %%%d to %%thunk*", alloc);
+	int funcptr = EMIT("getelementptr %%thunk* %%%d, i32 0, i32 0", thunk);
+	EMIT_("store %%thunkfunc " FUNC("thunk_%d") ", %%thunkfunc* %%%d", thunkid, funcptr);
+	return thunk;
+}
 
 DEFUNC(compile_member_expr, SmMemberExpr) {
 	GET_CODE;
@@ -130,12 +143,25 @@ DEFUNC(compile_literal, SmLiteral) {
 		EMIT_ ("@.const%d = private constant [%d x i8] c\"%s\\00\"", consttmp, len, expr->str);
 		POP_BLOCK;
 
+		int thunkid = comp->thunkid++;
+		PUSH_NEW_BLOCK;
+		BEGIN_FUNC("%%object", "thunk_%d", "%%thunk*", thunkid);
+		int thunk = sm_code_get_temp(code);
+		LABEL("entry");
 		int ptr = EMIT ("getelementptr [%d x i8]* @.const%d, i32 0, i32 0", len, consttmp);
-		int num = EMIT ("ptrtoint i8* %%%d to i64", ptr);
+		int obj = EMIT ("ptrtoint i8* %%%d to %%object", ptr);
+		// cached
+		int objptr = EMIT("getelementptr %%thunk* %%%d, i32 0, i32 2", thunk);
+		EMIT_("store %%object %%%d, %%object* %%%d", obj, objptr);
 		/* int tagged = EMIT ("or i64 %%%d, 2", num); */
-		int tagged = num;
-		int res = EMIT ("inttoptr i64 %%%d to i8*", tagged);
-		RETVAL({ .id=res });
+		int tagged = obj;
+		RET("%%object %%%d", tagged);
+		END_FUNC;
+		POP_BLOCK;
+
+		// build thunk
+		thunk = create_thunk (comp, thunkid);
+		RETVAL({ .id=thunk });
 	} else {
 		assert(0);
 	}
@@ -169,14 +195,22 @@ SmJit* sm_compile (const char* name, SmExpr* expr) {
 	PUSH_BLOCK(comp->decls);
 	DECLARE ("i32 @printf(i8*, ...)");
 	DECLARE ("i8* @malloc(i32)");
+	EMIT_ ("%%object = type i64");
+	EMIT_ ("%%thunkfunc = type %%object (%%thunk*)*");
+	DEFINE_STRUCT ("thunk", "%%thunkfunc, %%thunk*, %%object"); // second element is the scope
 	POP_BLOCK;
 
-	PUSH_BLOCK (sm_code_new_block (code));
+	PUSH_NEW_BLOCK;
 	BEGIN_FUNC("void", "main", "");
-	SmVarType tmp = VISIT(expr);
-	CALL ("i32 (i8*, ...)* @printf(i8* %%%d)", tmp.id);
-	RET("void", "");
-	END_FUNC();
+	LABEL("entry");
+	SmVarType thunk = VISIT(expr);
+	int funcptr = EMIT("getelementptr %%thunk* %%%d, i32 0, i32 0", thunk.id);
+	int func = EMIT("load %%thunkfunc* %%%d", funcptr);
+	int object = CALL("%%object %%%d(%%thunk* %%%d)", func, thunk.id);
+	int strptr = EMIT("inttoptr %%object %%%d to i8*", object);
+	CALL ("i32 (i8*, ...)* @printf(i8* %%%d)", strptr);
+	RET("void");
+	END_FUNC;
 	POP_BLOCK;
 
 	char* unit = sm_code_link (code);

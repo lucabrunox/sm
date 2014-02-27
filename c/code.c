@@ -44,7 +44,7 @@ void sm_code_emitv (SmCode* code, const char* fmt, va_list ap) {
 }
 
 int sm_code_get_temp (SmCode* code) {
-	return ++code->current->varcount;
+	return code->current->varcount++;
 }
 
 int sm_code_emit_temp (SmCode* code, const char* fmt, ...) {
@@ -57,11 +57,10 @@ int sm_code_emit_temp (SmCode* code, const char* fmt, ...) {
 
 int sm_code_emit_tempv (SmCode* code, const char* fmt, va_list ap) {
 	SmCodeBlock* block = code->current;
-	block->varcount++;
 	sm_code_emit_raw (code, "%%%d = ", block->varcount);
 	sm_code_emit_rawv (code, fmt, ap);
 	sm_code_emit_char (code, '\n');
-	return block->varcount;
+	return block->varcount++;
 }
 
 void sm_code_emit_char (SmCode* code, char ch) {
@@ -130,6 +129,7 @@ SmCodeBlock* sm_code_new_block (SmCode* code) {
 		code->head = code->tail = block;
 	} else {
 		code->tail->next = block;
+		code->tail = block;
 	}
 	return block;
 }

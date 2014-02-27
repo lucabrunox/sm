@@ -26,20 +26,20 @@ void sm_parser_free (SmParser* parser) {
 }
 
 #define NEXT (sm_token_destroy(&parser->cur), parser->cur = sm_lexer_next(&parser->lexer), parser->cur)
-#define PTOK(t) puts(t.type)
+#define PTOK puts(parser->cur.type)
 #define FUNC(n) static SmExpr* n (SmParser* parser)
 #define FUNC2(n) static SmExpr* n (SmParser* parser, SmExpr* inner)
 #define TYPE (parser->cur.type)
-#define EXPECT(x) if (TYPE != x) { puts("expected " x); return NULL; }
-#define ACCEPT(x) ((TYPE == x) ? (NEXT, 1) : 0)
-#define ACCEPT_ID(x) ((TYPE == "id") ? (!strcmp(STR, x) ? (NEXT, 1) : 0) : 0)
+#define EXPECT(x) if (!CASE(x)) { printf("expected " x ", got %s\n", TYPE); return NULL; }
+#define ACCEPT(x) ((CASE(x)) ? (NEXT, 1) : 0)
+#define ACCEPT_ID(x) ((CASE("id")) ? (!strcmp(STR, x) ? (NEXT, 1) : 0) : 0)
 #define SKIP(x) EXPECT(x); NEXT;
 #define STR (parser->cur.str)
 #define NEW(n,x,t) x* n = (x*)calloc(1, sizeof(x)); (n)->base.type=t;
 #define SAVE (*parser)
 #define RESTORE(x) sm_token_destroy(&parser->cur); *parser = x
 #define CHECK(x) if (!x) return NULL
-#define CASE(x) (TYPE == x)
+#define CASE(x) (!strcmp(TYPE, x))
 
 static char* identifier (SmParser* parser) {
 	EXPECT("id");
@@ -109,7 +109,7 @@ FUNC(assign) {
 		g_ptr_array_unref (names);
 		RESTORE(begin);
 	}
-		
+	
 	return primary(parser);
 }
 

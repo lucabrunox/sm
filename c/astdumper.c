@@ -30,6 +30,17 @@ static char* dump_member_expr (SmMemberExpr* expr) {
 	}
 }
 
+static char* dump_literal (SmLiteral* expr) {
+	char* res = NULL;
+	if (expr->str) {
+		// TODO: quote
+		asprintf(&res, "'%s'", expr->str);
+	} else {
+		asprintf(&res, "%g", expr->num);
+	}
+	return res;
+}
+
 static char* dump_assign_expr (SmAssignExpr* expr) {
 	char* res = strdup("");
 	char* old;
@@ -79,7 +90,8 @@ static char* dump_seq_expr (SmSeqExpr* expr) {
 char* (*dump_table[])(SmExpr*) = {
 	[SM_MEMBER_EXPR] = CAST(dump_member_expr),
 	[SM_SEQ_EXPR] = CAST(dump_seq_expr),
-	[SM_ASSIGN_EXPR] = CAST(dump_assign_expr)
+	[SM_ASSIGN_EXPR] = CAST(dump_assign_expr),
+	[SM_LITERAL] = CAST(dump_literal)
 };
 
 char* sm_ast_dump (SmExpr* expr) {

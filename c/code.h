@@ -6,17 +6,18 @@
 #define EMIT_(s,...) sm_code_emit(code, s, ##__VA_ARGS__)
 #define EMIT(s,...) sm_code_emit_temp(code, s, ##__VA_ARGS__)
 #define DECLARE(s,...) EMIT_("declare " s, ##__VA_ARGS__)
-#define DEFINE_STRUCT(s,fields,...) EMIT_("%%struct." s " = type { " fields " }", ##__VA_ARGS__)
+#define DEFINE_STRUCT(s,fields,...) EMIT_("%%" s " = type { " fields " }", ##__VA_ARGS__)
 #define STRUCT(s) "%%struct." s
 #define FUNC(s) "@_smc_" s
 #define BEGIN_FUNC(ret,name,params,...) EMIT_("define " ret " @_smc_" name "(" params ") {", ##__VA_ARGS__)
-#define END_FUNC() EMIT_("}")
+#define END_FUNC EMIT_("}")
+#define LABEL(x) EMIT_(x ":")
 #define CALL(s,...) EMIT("call " s, ##__VA_ARGS__);
 #define BITCAST(f,t,...) EMIT("bitcast " f " to " t, ##__VA_ARGS__)
 #define THUNK_NEW() sm_code_emit_new_thunk(code)
 #define SIZEOF(t,...) sizeptr_tmp=EMIT("getelementptr " t " null, i64 1, i32 0",##__VA_ARGS__); \
                   size_tmp=EMIT("ptrtoint i32* %%%d to i32", sizeptr_tmp)
-#define RET(t,v,...) EMIT_("ret " t v, ##__VA_ARGS__)
+#define RET(v,...) EMIT_("ret " v, ##__VA_ARGS__)
 
 typedef struct _SmCode SmCode;
 typedef struct _SmCodeBlock SmCodeBlock;

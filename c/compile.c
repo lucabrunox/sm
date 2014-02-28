@@ -111,8 +111,8 @@ static int create_thunk (SmCompile* comp, int thunkid) {
 	int jmpptr = EMIT("getelementptr %%thunk* %%%d, i32 0, i32 %d", thunk, THUNK_JUMP);
 	EMIT_("store i32 0, i32* %%%d", jmpptr);
 
-	int scopeptr = EMIT("getelementptr %%thunk* %%%d, i32 0, i32 %d", thunk, THUNK_JUMP);
-	EMIT_("store i32 0, i32* %%%d", jmpptr);
+	int scopeptr = EMIT("getelementptr %%thunk* %%%d, i32 0, i32 %d", thunk, THUNK_SCOPE);
+	EMIT_("store %%thunk** %%%d, %%thunk*** %%%d", comp->scopeid, scopeptr);
 
 	return thunk;
 }

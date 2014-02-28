@@ -44,7 +44,7 @@ typedef struct {
 	SmCodeBlock* decls;
 	SmVarType ret;
 	SmScope* scope;
-	int scopeid;
+	int cur_scopeid;
 	int next_thunkid;
 } SmCompile;
 
@@ -76,14 +76,14 @@ static void begin_thunk_func (SmCompile* comp, int thunkid) {
 	int thunk = sm_code_get_temp (code); // first param
 	LABEL("entry");
 	int jmpptr = EMIT ("getelementptr %%thunk* %%%d, i32 0, i32 %d", thunk, THUNK_JUMP);
-	int jmp = EMIT ("load i32* %%%d", jmpptr);
-	int labelptr = EMIT("getelementptr inbounds [2 x i8*]* @thunklabel_%d, i32 0, i32 %%%d", thunkid, jmp);
+	int jmp = EMIT ("load i64* %%%d", jmpptr);
+	int labelptr = EMIT("getelementptr inbounds [2 x i8*]* @thunklabel_%d, i32 0, i64 %%%d", thunkid, jmp);
 	int label = EMIT("load i8** %%%d, align 8", labelptr);
 	EMIT_("indirectbr i8* %%%d, [label %%eval, label %%cache]", label);
 
 	LABEL("eval");
 	// next jump will point to the cache
-	EMIT_("store i32 1, i32* %%%d", jmpptr);
+	EMIT_("store i64 1, i64* %%%d", jmpptr);
 }
 
 static void end_thunk_func (SmCompile* comp, int result) {
@@ -113,21 +113,23 @@ static int eval_thunk (SmCompile* comp, int thunk) {
 	return object;
 }
 
-static int create_thunk (SmCompile* comp, int thunkid) {
+static int create_thunk (SmCompile* comp, int thunkid, int notseq) {
 	GET_CODE;
-	int thunksizeptr = EMIT("getelementptr %%thunk* null, i32 1, i32 0");
-	int thunksize = EMIT("ptrtoint %%thunkfunc* %%%d to i32", thunksizeptr);
-	int alloc = EMIT("call i8* @malloc(i32 %%%d)", thunksize);
+	int alloc = CALL("i8* @malloc(i32 %d)", sizeof(void*)*THUNK_SCOPE+sizeof(void*)*(comp->scope->level+1));
 	int thunk = EMIT("bitcast i8* %%%d to %%thunk*", alloc);
 
 	int funcptr = EMIT("getelementptr %%thunk* %%%d, i32 0, i32 %d", thunk, THUNK_FUNC);
 	EMIT_("store %%thunkfunc " FUNC("thunk_%d") ", %%thunkfunc* %%%d", thunkid, funcptr);
 
 	int jmpptr = EMIT("getelementptr %%thunk* %%%d, i32 0, i32 %d", thunk, THUNK_JUMP);
-	EMIT_("store i32 0, i32* %%%d", jmpptr);
+	EMIT_("store i64 0, i64* %%%d", jmpptr);
 
-	int scopeptr = EMIT("getelementptr %%thunk* %%%d, i32 0, i32 %d", thunk, THUNK_SCOPE);
-	EMIT_("store %%thunk** %%%d, %%thunk*** %%%d", comp->scopeid, scopeptr);
+	if (comp->scope->parent) {
+		// 0 = first param
+		int srcptr = EMIT("getelementptr %%thunk* %%0, i32 0, i32 %d, i32 0", THUNK_SCOPE);
+		int destptr = EMIT("getelementptr %%thunk* %%%d, i32 0, i32 %d, i32 0", thunk, THUNK_SCOPE);
+		CALL("@llvm.memcpy.p0i8.p0i8.i32 %%thunk*** %%%d, %%thunk*** %%%d, %d, 1, 0", destptr, srcptr, sizeof(void*)*(comp->scope->level+notseq));
+	}
 
 	return thunk;
 }
@@ -146,7 +148,10 @@ DEFUNC(compile_member_expr, SmMemberExpr) {
 		exit(0);
 	}
 
-	int addr = EMIT("getelementptr %%thunk** %%%d, i32 %d", comp->scopeid, varid);
+	// 0 = first param
+	int scopeptr = EMIT("getelementptr %%thunk* %%0, i32 0, i32 %d, i32 %d", THUNK_SCOPE, level);
+	int scope = EMIT("load %%thunk*** %%%d", scopeptr);
+	int addr = EMIT("getelementptr %%thunk** %%%d, i32 %d", scope, varid);
 	int res = EMIT("load %%thunk** %%%d", addr);
 	RETVAL({ .id=res });
 }
@@ -179,16 +184,21 @@ DEFUNC(compile_seq_expr, SmSeqExpr) {
 				exit(0);
 			}
 
-			varid++;
-			g_hash_table_insert (scope->map, name, GINT_TO_POINTER(varid));
+			g_hash_table_insert (scope->map, name, GINT_TO_POINTER(varid++));
 		}
 		
 		head = head->next;
 	}
 
+	int thunkid = comp->next_thunkid++;
+
+	begin_thunk_func (comp, thunkid);
 	int allocsize = varid*sizeof(void*);
 	int alloc = EMIT("call i8* @malloc(i32 %d)", allocsize);
-	comp->scopeid = EMIT("bitcast i8* %%%d to %%thunk**", alloc);
+	int scopeid = EMIT("bitcast i8* %%%d to %%thunk**", alloc);
+	// set to the current thunk, 0 = first param
+	int scopeptr = EMIT("getelementptr %%thunk* %%0, i32 0, i32 %d, i32 %d", THUNK_SCOPE, scope->level);
+	EMIT_("store %%thunk** %%%d, %%thunk*** %%%d", scopeid, scopeptr);
 
 	/* assign values to scope */
 	head = expr->assigns->head;
@@ -205,7 +215,7 @@ DEFUNC(compile_seq_expr, SmSeqExpr) {
 			}
 
 			SmVarType value = VISIT(assign->value);
-			int addr = EMIT("getelementptr %%thunk** %%%d, i32 %d", comp->scopeid, varid);
+			int addr = EMIT("getelementptr %%thunk** %%%d, i32 %d", scopeid, varid);
 			EMIT_("store %%thunk* %%%d, %%thunk** %%%d", value.id, addr);
 		} else {
 			printf("unsupported pattern match\n");
@@ -215,17 +225,18 @@ DEFUNC(compile_seq_expr, SmSeqExpr) {
 		head = head->next;
 	}
 
-	SmVarType result = VISIT(expr->result);
+	SmVarType resthunk = VISIT(expr->result);
+	int object = eval_thunk (comp, resthunk.id);
+	RET("%%object %%%d", object);
+	end_thunk_func (comp, thunkid);
+
+	int thunk = create_thunk (comp, thunkid, 0);
 
 	comp->scope = scope->parent;
 	g_hash_table_unref (scope->map);
 	free (scope);
 
-	return result;
-}
-
-DEFUNC(compile_assign_expr, SmAssignExpr) {
-	GET_CODE;
+	RETVAL({ .id=thunk });
 }
 
 DEFUNC(compile_literal, SmLiteral) {
@@ -250,7 +261,7 @@ DEFUNC(compile_literal, SmLiteral) {
 		end_thunk_func (comp, tagged);
 
 		// build thunk
-		int thunk = create_thunk (comp, thunkid);
+		int thunk = create_thunk (comp, thunkid, 1);
 		RETVAL({ .id=thunk });
 	} else {
 		assert(0);
@@ -261,7 +272,6 @@ DEFUNC(compile_literal, SmLiteral) {
 SmVarType (*compile_table[])(SmCompile*, SmExpr*) = {
 	[SM_MEMBER_EXPR] = CAST(compile_member_expr),
 	[SM_SEQ_EXPR] = CAST(compile_seq_expr),
-	[SM_ASSIGN_EXPR] = CAST(compile_assign_expr),
 	[SM_LITERAL] = CAST(compile_literal)
 };
 
@@ -287,7 +297,7 @@ SmJit* sm_compile (const char* name, SmExpr* expr) {
 	DECLARE ("i8* @malloc(i32)");
 	EMIT_ ("%%object = type i64");
 	EMIT_ ("%%thunkfunc = type %%object (%%thunk*)*");
-	DEFINE_STRUCT ("thunk", "%%thunkfunc, i32, %%object, %%thunk**"); // func, jump label index, cached object, scope
+	DEFINE_STRUCT ("thunk", "%%thunkfunc, i64, %%object, [0 x %%thunk**]"); // func, jump label index, cached object, scope
 	POP_BLOCK;
 
 	PUSH_NEW_BLOCK;

@@ -2,18 +2,11 @@
 
 struct thunk {
 	int foo;
+	struct thunk** scopes[];
 };
 
-void asd (int opcode) {
-	static const void *codetable[] =
-    { &&RETURN };
-
-  goto *codetable[opcode];
-RETURN:
-	printf("%p", codetable[0]);
-  return;
-}
-
 void main () {
-	asd(0);
+	struct thunk* asd = NULL;
+	struct thunk* bar = asd[0].scopes[0][0];
+	bar->foo = 123;
 }

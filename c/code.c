@@ -4,7 +4,6 @@
 #include <string.h>
 
 #include "code.h"
-#include "uthash/src/utlist.h"
 
 struct _SmCodeBlock {
 	int allocsize;

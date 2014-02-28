@@ -30,15 +30,9 @@ typedef struct {
 
 typedef struct _SmAssignList SmAssignList;
 
-struct _SmAssignList {
-	SmAssignExpr* expr;
-	SmAssignList* next;
-	SmAssignList* prev;
-};
-
 typedef struct {
 	SmExpr base;
-	SmAssignList* assigns;
+	GQueue* assigns;
 	SmExpr* result;
 } SmSeqExpr;
 

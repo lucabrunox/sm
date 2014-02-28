@@ -2,9 +2,6 @@
 #include <stdio.h>
 #include <glib.h>
 
-#include "uthash/src/utlist.h"
-#include "uthash/src/utarray.h"
-
 #include "lexer.h"
 #include "parser.h"
 #include "ast.h"
@@ -121,10 +118,9 @@ FUNC(seq) {
 	}
 
 	NEW(seq, SmSeqExpr, SM_SEQ_EXPR);
+	seq->assigns = g_queue_new ();
 	while (ACCEPT(";")) {
-		SmAssignList* entry = (SmAssignList*) calloc(1, sizeof(SmAssignList));
-		entry->expr = (SmAssignExpr*) expr;
-		DL_APPEND(seq->assigns, entry);
+		g_queue_push_tail (seq->assigns, expr);
 
 		expr = assign(parser);
 		CHECK(expr);

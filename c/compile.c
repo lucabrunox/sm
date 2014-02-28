@@ -1,13 +1,12 @@
 #include <assert.h>
 #include <stdio.h>
 #include <glib.h>
+#include <stdint.h>
 
 #include "compile.h"
 #include "ast.h"
 #include "llvm.h"
 #include "code.h"
-#include "uthash/src/utarray.h"
-#include "uthash/src/utlist.h"
 
 #define DEFUNC(n,x) static SmVarType n (SmCompile* comp, x* expr)
 #define GET_CODE SmCode* code = comp->code
@@ -166,8 +165,10 @@ DEFUNC(compile_seq_expr, SmSeqExpr) {
 	/* compute scope size */
 	int varid = 0;
 	SmAssignList* el = NULL;
-	DL_FOREACH(expr->assigns, el) {
-		GPtrArray* names = el->expr->names;
+	GList* head = expr->assigns->head;
+	while (head) {
+		SmAssignExpr* assign = (SmAssignExpr*) head->data;
+		GPtrArray* names = assign->names;
 		for (int i=0; i < names->len; i++) {
 			const char* name = (const char*) names->pdata[i];
 			printf("%d\n", strlen(name));
@@ -181,6 +182,8 @@ DEFUNC(compile_seq_expr, SmSeqExpr) {
 			varid++;
 			g_hash_table_insert (scope->map, name, GINT_TO_POINTER(varid));
 		}
+		
+		head = head->next;
 	}
 
 	int allocsize = varid*sizeof(void*);
@@ -188,9 +191,10 @@ DEFUNC(compile_seq_expr, SmSeqExpr) {
 	comp->scopeid = EMIT("bitcast i8* %%%d to %%thunk**", alloc);
 
 	/* assign values to scope */
-	el = NULL;
-	DL_FOREACH(expr->assigns, el) {
-		GPtrArray* names = el->expr->names;
+	head = expr->assigns->head;
+	while (head) {
+		SmAssignExpr* assign = (SmAssignExpr*) head->data;
+		GPtrArray* names = assign->names;
 		if (names->len == 1) {
 			const char* name = (const char*) names->pdata[0];
 			int level;
@@ -200,13 +204,15 @@ DEFUNC(compile_seq_expr, SmSeqExpr) {
 				exit(0);
 			}
 
-			SmVarType value = VISIT(el->expr->value);
+			SmVarType value = VISIT(assign->value);
 			int addr = EMIT("getelementptr %%thunk** %%%d, i32 %d", comp->scopeid, varid);
 			EMIT_("store %%thunk* %%%d, %%thunk** %%%d", value.id, addr);
 		} else {
 			printf("unsupported pattern match\n");
 			exit(0);
 		}
+
+		head = head->next;
 	}
 
 	SmVarType result = VISIT(expr->result);

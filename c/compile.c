@@ -22,6 +22,10 @@
 #define STRING_TAG 2
 #define CHAR_TAG 4
 
+#define THUNK_FUNC 0
+#define THUNK_JUMP 1
+#define THUNK_CACHE 2
+#define THUNK_SCOPE 3
 
 typedef struct {
 	int id;
@@ -48,11 +52,16 @@ static SmVarType call_compile_table (SmCompile* comp, SmExpr* expr);
 static int create_thunk (SmCompile* comp, int thunkid) {
 	GET_CODE;
 	int thunksizeptr = EMIT("getelementptr %%thunk* null, i32 1, i32 0");
-	int thunksize = EMIT("ptrtoint %%thunkfunc* %%%d to i64", thunksizeptr);
-	int alloc = EMIT("call i8* @malloc(i32 %d)", thunksize);
+	int thunksize = EMIT("ptrtoint %%thunkfunc* %%%d to i32", thunksizeptr);
+	int alloc = EMIT("call i8* @malloc(i32 %%%d)", thunksize);
 	int thunk = EMIT("bitcast i8* %%%d to %%thunk*", alloc);
-	int funcptr = EMIT("getelementptr %%thunk* %%%d, i32 0, i32 0", thunk);
+
+	int funcptr = EMIT("getelementptr %%thunk* %%%d, i32 0, i32 %d", thunk, THUNK_FUNC);
 	EMIT_("store %%thunkfunc " FUNC("thunk_%d") ", %%thunkfunc* %%%d", thunkid, funcptr);
+
+	int jmpptr = EMIT("getelementptr %%thunk* %%%d, i32 0, i32 %d", thunk, THUNK_JUMP);
+	EMIT_("store i32 0, i32* %%%d", jmpptr);
+
 	return thunk;
 }
 
@@ -136,26 +145,44 @@ DEFUNC(compile_assign_expr, SmAssignExpr) {
 DEFUNC(compile_literal, SmLiteral) {
 	GET_CODE;
 	if (expr->str) {
+		int thunkid = comp->thunkid++;
+		
 		PUSH_BLOCK(comp->decls);
 		int consttmp = sm_code_get_temp (code);
 		int len = strlen(expr->str)+1;
 		// FIXME: escape
 		EMIT_ ("@.const%d = private constant [%d x i8] c\"%s\\00\"", consttmp, len, expr->str);
+		EMIT_ ("@thunklabel_%d = internal global [2 x i8*] [i8* blockaddress(" FUNC("thunk_%d") ", %%eval), i8* blockaddress(" FUNC("thunk_%d") ", %%cache)], align 8",
+			   thunkid, thunkid, thunkid);
 		POP_BLOCK;
 
-		int thunkid = comp->thunkid++;
 		PUSH_NEW_BLOCK;
 		BEGIN_FUNC("%%object", "thunk_%d", "%%thunk*", thunkid);
 		int thunk = sm_code_get_temp(code);
 		LABEL("entry");
+		int jmpptr = EMIT ("getelementptr %%thunk* %%%d, i32 0, i32 %d", thunk, THUNK_JUMP);
+		int jmp = EMIT ("load i32* %%%d", jmpptr);
+		int labelptr = EMIT("getelementptr inbounds [2 x i8*]* @thunklabel_%d, i32 0, i32 %%%d", thunkid, jmp);
+		int label = EMIT("load i8** %%%d, align 8", labelptr);
+		EMIT_("indirectbr i8* %%%d, [label %%eval, label %%cache]", label);
+		
+		LABEL("eval");
 		int ptr = EMIT ("getelementptr [%d x i8]* @.const%d, i32 0, i32 0", len, consttmp);
 		int obj = EMIT ("ptrtoint i8* %%%d to %%object", ptr);
-		// cached
-		int objptr = EMIT("getelementptr %%thunk* %%%d, i32 0, i32 2", thunk);
-		EMIT_("store %%object %%%d, %%object* %%%d", obj, objptr);
 		/* int tagged = EMIT ("or i64 %%%d, 2", num); */
 		int tagged = obj;
+
+		// cache
+		int objptr = EMIT("getelementptr %%thunk* %%%d, i32 0, i32 %d", thunk, THUNK_CACHE);
+		EMIT_("store %%object %%%d, %%object* %%%d", tagged, objptr);
+		EMIT_("store i32 1, i32* %%%d", jmpptr);
 		RET("%%object %%%d", tagged);
+
+		LABEL("cache");
+		objptr = EMIT("getelementptr %%thunk* %%%d, i32 0, i32 %d", thunk, THUNK_CACHE);
+		obj = EMIT("load %%object* %%%d", objptr);
+		RET("%%object %%%d", obj);
+		
 		END_FUNC;
 		POP_BLOCK;
 
@@ -197,18 +224,26 @@ SmJit* sm_compile (const char* name, SmExpr* expr) {
 	DECLARE ("i8* @malloc(i32)");
 	EMIT_ ("%%object = type i64");
 	EMIT_ ("%%thunkfunc = type %%object (%%thunk*)*");
-	DEFINE_STRUCT ("thunk", "%%thunkfunc, %%thunk*, %%object"); // second element is the scope
+	DEFINE_STRUCT ("thunk", "%%thunkfunc, i32, %%object, %%thunk*"); // func, jump label index, cached object, scope
 	POP_BLOCK;
 
 	PUSH_NEW_BLOCK;
 	BEGIN_FUNC("void", "main", "");
 	LABEL("entry");
 	SmVarType thunk = VISIT(expr);
-	int funcptr = EMIT("getelementptr %%thunk* %%%d, i32 0, i32 0", thunk.id);
+	int funcptr = EMIT("getelementptr %%thunk* %%%d, i32 0, i32 %d", thunk.id, THUNK_FUNC);
 	int func = EMIT("load %%thunkfunc* %%%d", funcptr);
+
+	// first call
 	int object = CALL("%%object %%%d(%%thunk* %%%d)", func, thunk.id);
 	int strptr = EMIT("inttoptr %%object %%%d to i8*", object);
 	CALL ("i32 (i8*, ...)* @printf(i8* %%%d)", strptr);
+
+	// second call
+	object = CALL("%%object %%%d(%%thunk* %%%d)", func, thunk.id);
+	strptr = EMIT("inttoptr %%object %%%d to i8*", object);
+	CALL ("i32 (i8*, ...)* @printf(i8* %%%d)", strptr);
+	
 	RET("void");
 	END_FUNC;
 	POP_BLOCK;

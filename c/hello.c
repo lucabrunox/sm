@@ -7,7 +7,6 @@ struct thunk {
 void asd (int opcode) {
 	static const void *codetable[] =
     { &&RETURN };
-	int result = 0;
 
   goto *codetable[opcode];
 RETURN:

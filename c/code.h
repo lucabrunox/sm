@@ -13,6 +13,10 @@
 #define END_FUNC EMIT_("}")
 #define LABEL(x) EMIT_(x ":")
 #define CALL(s,...) EMIT("call " s, ##__VA_ARGS__);
+#define CALL_(s,...) EMIT_("call " s, ##__VA_ARGS__);
+#define LOAD(s,...) EMIT("load " s, ##__VA_ARGS__);
+#define GETPTR(s,x,...) EMIT("getelementptr " s ", " x, ##__VA_ARGS__);
+#define STORE(x,y,...) EMIT_("store " x ", " y, ##__VA_ARGS__);
 #define BITCAST(f,t,...) EMIT("bitcast " f " to " t, ##__VA_ARGS__)
 #define THUNK_NEW() sm_code_emit_new_thunk(code)
 #define SIZEOF(t,...) sizeptr_tmp=EMIT("getelementptr " t " null, i64 1, i32 0",##__VA_ARGS__); \

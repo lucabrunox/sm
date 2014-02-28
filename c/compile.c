@@ -74,7 +74,6 @@ static void begin_thunk_func (SmCompile* comp, int thunkid) {
 static void end_thunk_func (SmCompile* comp, int result) {
 	GET_CODE;
 	int thunk = 0; // first param
-	RET("%%object %%%d", result);
 	
 	LABEL("cache");
 	int objptr = EMIT("getelementptr %%thunk* %%%d, i32 0, i32 %d", thunk, THUNK_CACHE);
@@ -112,6 +111,9 @@ static int create_thunk (SmCompile* comp, int thunkid) {
 	int jmpptr = EMIT("getelementptr %%thunk* %%%d, i32 0, i32 %d", thunk, THUNK_JUMP);
 	EMIT_("store i32 0, i32* %%%d", jmpptr);
 
+	int scopeptr = EMIT("getelementptr %%thunk* %%%d, i32 0, i32 %d", thunk, THUNK_JUMP);
+	EMIT_("store i32 0, i32* %%%d", jmpptr);
+
 	return thunk;
 }
 
@@ -129,8 +131,8 @@ DEFUNC(compile_member_expr, SmMemberExpr) {
 		exit(0);
 	}
 
-	int addr = EMIT("getelementptr i8** %%%d, i32 %d", comp->scopeid, entry->id);
-	int res = EMIT("load i8** %%%d", addr);
+	int addr = EMIT("getelementptr %%thunk** %%%d, i32 %d", comp->scopeid, entry->id);
+	int res = EMIT("load %%thunk** %%%d", addr);
 	RETVAL({ .id=res });
 }
 
@@ -163,7 +165,7 @@ DEFUNC(compile_seq_expr, SmSeqExpr) {
 
 	int allocsize = varid*sizeof(void*);
 	int alloc = EMIT("call i8* @malloc(i32 %d)", allocsize);
-	comp->scopeid = EMIT("bitcast i8* %%%d to i8**", alloc);
+	comp->scopeid = EMIT("bitcast i8* %%%d to %%thunk**", alloc);
 
 	/* assign values to scope */
 	el = NULL;
@@ -171,16 +173,16 @@ DEFUNC(compile_seq_expr, SmSeqExpr) {
 		GPtrArray* names = el->expr->names;
 		if (names->len == 1) {
 			const char* name = (const char*) names->pdata[0];
-			SmVarType value = VISIT(el->expr->value);
-			
 			SmScope* found;
 			HASH_FIND_STR(comp->scope, name, found);
 			if (!found) {
 				printf ("assert not found '%s'\n", name);
 				exit(0);
 			}
-			int addr = EMIT("getelementptr i8** %%%d, i32 %d", comp->scopeid, found->id);
-			EMIT_("store i8* %%%d, i8** %%%d", value.id, addr);
+			
+			SmVarType value = VISIT(el->expr->value);
+			int addr = EMIT("getelementptr %%thunk** %%%d, i32 %d", comp->scopeid, found->id);
+			EMIT_("store %%thunk* %%%d, %%thunk** %%%d", value.id, addr);
 		}
 	}
 
@@ -210,6 +212,7 @@ DEFUNC(compile_literal, SmLiteral) {
 		int obj = EMIT ("ptrtoint i8* %%%d to %%object", ptr);
 		/* int tagged = EMIT ("or i64 %%%d, 2", num); */
 		int tagged = obj;
+		RET("%%object %%%d", tagged);
 		end_thunk_func (comp, tagged);
 
 		// build thunk
@@ -250,7 +253,7 @@ SmJit* sm_compile (const char* name, SmExpr* expr) {
 	DECLARE ("i8* @malloc(i32)");
 	EMIT_ ("%%object = type i64");
 	EMIT_ ("%%thunkfunc = type %%object (%%thunk*)*");
-	DEFINE_STRUCT ("thunk", "%%thunkfunc, i32, %%object, %%thunk*"); // func, jump label index, cached object, scope
+	DEFINE_STRUCT ("thunk", "%%thunkfunc, i32, %%object, %%thunk**"); // func, jump label index, cached object, scope
 	POP_BLOCK;
 
 	PUSH_NEW_BLOCK;

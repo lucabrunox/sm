@@ -4,18 +4,19 @@
 #include <stdint.h>
 
 typedef struct {
+	const char* ptr;
+	int row;
+	int col;
+} SmLexer;
+
+typedef struct {
+	SmLexer start;
 	const char *type;
 	union {
 		double num;
 		char *str;
 	};
 } SmToken;
-
-typedef struct {
-	const char* ptr;
-	int row;
-	int col;
-} SmLexer;
 
 void sm_lexer_init (SmLexer* lexer, const char* buf);
 SmToken sm_lexer_next (SmLexer* lexer);

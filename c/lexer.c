@@ -7,8 +7,8 @@
 
 #define PEEK (*(lexer->ptr))
 #define READ (PEEK ? ((PEEK == '\n' ? (lexer->row++, lexer->col=0) : lexer->col++), *(lexer->ptr)++) : 0)
-#define LEX1(e) if (c == e[0]) { READ; return { .type=e }; }
-#define LEX2(e1,e2) if (c == e1[0]) { READ; if (PEEK == e2[0]) { READ; return { .type=e1 e2 }; } else { return { .type=e1 }; } }
+#define LEX1(e) if (c == e[0]) { READ; return { .start=start, .type=e }; }
+#define LEX2(e1,e2) if (c == e1[0]) { READ; if (PEEK == e2[0]) { READ; return { .start=start, .type=e1 e2 }; } else { return { .start=start, .type=e1 }; } }
 
 void sm_lexer_init (SmLexer* lexer, const char* buf) {
 	lexer->ptr = buf;
@@ -19,10 +19,12 @@ void sm_lexer_destroy (void) {
 }
 
 SmToken sm_lexer_next (SmLexer* lexer) {
+	SmLexer start = *lexer;
+	
 	while (isspace (PEEK)) READ;
 	char c = PEEK;
 	if (!c) {
-		return { .type="eof" };
+		return { .start=start, .type="eof" };
 	}
 
 	while (c == '#') {
@@ -31,7 +33,7 @@ SmToken sm_lexer_next (SmLexer* lexer) {
 		c = PEEK;
 	}
 	if (!c) {
-		return { .type="eof" };
+		return { .start=start, .type="eof" };
 	}
 
 	if (isalpha (c)) {
@@ -46,7 +48,7 @@ SmToken sm_lexer_next (SmLexer* lexer) {
 			asprintf(&id, "%s?", id);
 			free(old);
 		}
-		SmToken t = { .type="id" };
+		SmToken t = { .start=start, .type="id" };
 		t.str = id;
 		return t;
 	}
@@ -57,13 +59,13 @@ SmToken sm_lexer_next (SmLexer* lexer) {
 			val *= 10;
 			val += READ-'0';
 		}
-		SmToken t = { .type="num" };
+		SmToken t = { .start=start, .type="num" };
 		t.num=val;
 		return t;
 	}
 
 	if (c == '_') {
-		SmToken t = { .type="id" };
+		SmToken t = { .start=start, .type="id" };
 		t.str = strdup ("_");
 		READ;
 		return t;
@@ -72,9 +74,9 @@ SmToken sm_lexer_next (SmLexer* lexer) {
 	if (c == '!') {
 		READ;
 		if (READ != '=') {
-			return { .type="unknown" };
+			return { .start=start, .type="unknown" };
 		}
-		return { .type="!=" };
+		return { .start=start, .type="!=" };
 	}
 
 	LEX1("+");
@@ -112,19 +114,19 @@ SmToken sm_lexer_next (SmLexer* lexer) {
 				}
 			}
 			if (!PEEK) {
-				return { .type="unterminated string" };
+				return { .start=start, .type="unterminated string" };
 			}
 			char* old = str;
 			asprintf(&str, "%s%c", str ? str : "", READ);
 			free(old);
 		}
 		READ;
-		SmToken t = { .type="str" };
+		SmToken t = { .start=start, .type="str" };
 		t.str = str;
 		return t;
 	}
 	
-	return { .type="unknown" };
+	return { .start=start, .type="unknown" };
 }
 
 void sm_token_destroy (SmToken* token) {

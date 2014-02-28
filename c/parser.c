@@ -37,7 +37,7 @@ void sm_parser_free (SmParser* parser) {
 #define STR (parser->cur.str)
 #define NEW(n,x,t) x* n = (x*)calloc(1, sizeof(x)); (n)->base.type=t;
 #define SAVE (*parser)
-#define RESTORE(x) sm_token_destroy(&parser->cur); *parser = x
+#define RESTORE(x) parser->lexer=x.cur.start; NEXT
 #define CHECK(x) if (!x) return NULL
 #define CASE(x) (!strcmp(TYPE, x))
 
@@ -52,7 +52,7 @@ static char* identifier (SmParser* parser) {
 FUNC2(member) {
 	char* id = identifier(parser);
 	CHECK(id);
-	
+
 	NEW(expr, SmMemberExpr, SM_MEMBER_EXPR);
 	expr->inner = inner;
 	expr->name = id;
@@ -70,7 +70,8 @@ FUNC(primary) {
 		NEXT;
 		expr = EXPR(tmp);
 	} else {
-		printf("unexpected %s", TYPE);
+		printf("unexpected %s\n", TYPE);
+		abort();
 		return NULL;
 	}
 	
@@ -84,7 +85,6 @@ FUNC(assign) {
 		char* name = identifier(parser);
 		GPtrArray* names = g_ptr_array_new_with_free_func ((GDestroyNotify) g_free);
 		g_ptr_array_add (names, name);
-
 		while (ACCEPT (",")) {
 			if (CASE("id")) {
 				g_ptr_array_add (names, STR);
@@ -109,7 +109,7 @@ FUNC(assign) {
 		g_ptr_array_unref (names);
 		RESTORE(begin);
 	}
-	
+
 	return primary(parser);
 }
 
@@ -138,8 +138,8 @@ FUNC(seq) {
 }
 
 SmExpr* sm_parser_parse (SmParser* parser, SmLexer lexer) {
+	memset(parser, '\0', sizeof(SmParser));
 	parser->lexer = lexer;
-	parser->cur = {0};
 	
 	NEXT;
 	SmExpr* expr = seq(parser);

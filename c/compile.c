@@ -49,6 +49,45 @@ typedef struct {
 
 static SmVarType call_compile_table (SmCompile* comp, SmExpr* expr);
 
+static void begin_thunk_func (SmCompile* comp, int thunkid) {
+	GET_CODE;
+	PUSH_BLOCK(comp->decls);
+	EMIT_ ("@thunklabel_%d = internal global [2 x i8*] [i8* blockaddress(" FUNC("thunk_%d") ", %%eval), i8* blockaddress(" FUNC("thunk_%d") ", %%cache)], align 8",
+		   thunkid, thunkid, thunkid);
+	POP_BLOCK;
+
+	PUSH_NEW_BLOCK;
+	BEGIN_FUNC("%%object", "thunk_%d", "%%thunk*", thunkid);
+	int thunk = sm_code_get_temp (code); // first param
+	LABEL("entry");
+	int jmpptr = EMIT ("getelementptr %%thunk* %%%d, i32 0, i32 %d", thunk, THUNK_JUMP);
+	int jmp = EMIT ("load i32* %%%d", jmpptr);
+	int labelptr = EMIT("getelementptr inbounds [2 x i8*]* @thunklabel_%d, i32 0, i32 %%%d", thunkid, jmp);
+	int label = EMIT("load i8** %%%d, align 8", labelptr);
+	EMIT_("indirectbr i8* %%%d, [label %%eval, label %%cache]", label);
+
+	LABEL("eval");
+}
+
+static void end_thunk_func (SmCompile* comp, int result) {
+	GET_CODE;
+	int thunk = 0; // first param
+	// cache evaluation
+	int objptr = EMIT("getelementptr %%thunk* %%%d, i32 0, i32 %d", thunk, THUNK_CACHE);
+	EMIT_("store %%object %%%d, %%object* %%%d", result, objptr);
+	int jmpptr = EMIT ("getelementptr %%thunk* %%%d, i32 0, i32 %d", thunk, THUNK_JUMP);
+	EMIT_("store i32 1, i32* %%%d", jmpptr);
+	RET("%%object %%%d", result);
+	
+	LABEL("cache");
+	objptr = EMIT("getelementptr %%thunk* %%%d, i32 0, i32 %d", thunk, THUNK_CACHE);
+	int obj = EMIT("load %%object* %%%d", objptr);
+	RET("%%object %%%d", obj);
+	
+	END_FUNC;
+	POP_BLOCK;
+}
+
 static int create_thunk (SmCompile* comp, int thunkid) {
 	GET_CODE;
 	int thunksizeptr = EMIT("getelementptr %%thunk* null, i32 1, i32 0");
@@ -145,49 +184,25 @@ DEFUNC(compile_assign_expr, SmAssignExpr) {
 DEFUNC(compile_literal, SmLiteral) {
 	GET_CODE;
 	if (expr->str) {
-		int thunkid = comp->thunkid++;
-		
+		// define constant string
 		PUSH_BLOCK(comp->decls);
 		int consttmp = sm_code_get_temp (code);
 		int len = strlen(expr->str)+1;
 		// FIXME: escape
 		EMIT_ ("@.const%d = private constant [%d x i8] c\"%s\\00\"", consttmp, len, expr->str);
-		EMIT_ ("@thunklabel_%d = internal global [2 x i8*] [i8* blockaddress(" FUNC("thunk_%d") ", %%eval), i8* blockaddress(" FUNC("thunk_%d") ", %%cache)], align 8",
-			   thunkid, thunkid, thunkid);
 		POP_BLOCK;
 
-		PUSH_NEW_BLOCK;
-		BEGIN_FUNC("%%object", "thunk_%d", "%%thunk*", thunkid);
-		int thunk = sm_code_get_temp(code);
-		LABEL("entry");
-		int jmpptr = EMIT ("getelementptr %%thunk* %%%d, i32 0, i32 %d", thunk, THUNK_JUMP);
-		int jmp = EMIT ("load i32* %%%d", jmpptr);
-		int labelptr = EMIT("getelementptr inbounds [2 x i8*]* @thunklabel_%d, i32 0, i32 %%%d", thunkid, jmp);
-		int label = EMIT("load i8** %%%d, align 8", labelptr);
-		EMIT_("indirectbr i8* %%%d, [label %%eval, label %%cache]", label);
-		
-		LABEL("eval");
+		int thunkid = comp->thunkid++;
+		// expression code
+		begin_thunk_func (comp, thunkid);
 		int ptr = EMIT ("getelementptr [%d x i8]* @.const%d, i32 0, i32 0", len, consttmp);
 		int obj = EMIT ("ptrtoint i8* %%%d to %%object", ptr);
 		/* int tagged = EMIT ("or i64 %%%d, 2", num); */
 		int tagged = obj;
-
-		// cache
-		int objptr = EMIT("getelementptr %%thunk* %%%d, i32 0, i32 %d", thunk, THUNK_CACHE);
-		EMIT_("store %%object %%%d, %%object* %%%d", tagged, objptr);
-		EMIT_("store i32 1, i32* %%%d", jmpptr);
-		RET("%%object %%%d", tagged);
-
-		LABEL("cache");
-		objptr = EMIT("getelementptr %%thunk* %%%d, i32 0, i32 %d", thunk, THUNK_CACHE);
-		obj = EMIT("load %%object* %%%d", objptr);
-		RET("%%object %%%d", obj);
-		
-		END_FUNC;
-		POP_BLOCK;
+		end_thunk_func (comp, tagged);
 
 		// build thunk
-		thunk = create_thunk (comp, thunkid);
+		int thunk = create_thunk (comp, thunkid);
 		RETVAL({ .id=thunk });
 	} else {
 		assert(0);

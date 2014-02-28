@@ -123,7 +123,9 @@ static int create_thunk (SmCompile* comp, int thunkid, int notseq) {
 		// 0 = first param
 		int srcptr = GETPTR("%%thunk* %%0", "i32 0, i32 %d, i32 0", THUNK_SCOPE);
 		int destptr = GETPTR("%%thunk* %%%d", "i32 0, i32 %d, i32 0", thunk, THUNK_SCOPE);
-		CALL_("@llvm.memcpy.p0i8.p0i8.i32 %%thunk*** %%%d, %%thunk*** %%%d, %d, 1, 0", destptr, srcptr, sizeof(void*)*(comp->scope->level+notseq));
+		int srccast = BITCAST("%%thunk*** %%%d", "i8*", srcptr);
+		int destcast = BITCAST("%%thunk*** %%%d", "i8*", destptr);
+		CALL_("void @llvm.memcpy.p0i8.p0i8.i32(i8* %%%d, i8* %%%d, i32 %d, i32 1, i1 false)", destcast, srccast, sizeof(void*)*(comp->scope->level+notseq));
 	}
 
 	return thunk;
@@ -171,7 +173,6 @@ DEFUNC(compile_seq_expr, SmSeqExpr) {
 		GPtrArray* names = assign->names;
 		for (int i=0; i < names->len; i++) {
 			const char* name = (const char*) names->pdata[i];
-			printf("%d\n", strlen(name));
 
 			int existing = scope_lookup (scope, name, NULL);
 			if (existing >= 0) {
@@ -290,6 +291,7 @@ SmJit* sm_compile (const char* name, SmExpr* expr) {
 	PUSH_BLOCK(comp->decls);
 	DECLARE ("i32 @printf(i8*, ...)");
 	DECLARE ("i8* @malloc(i32)");
+	DECLARE ("void @llvm.memcpy.p0i8.p0i8.i32(i8*, i8*, i32, i32, i1)");
 	EMIT_ ("%%object = type i64");
 	EMIT_ ("%%thunkfunc = type %%object (%%thunk*)*");
 	DEFINE_STRUCT ("thunk", "%%thunkfunc, i64, %%object, [0 x %%thunk**]"); // func, jump label index, cached object, scope
@@ -315,7 +317,6 @@ SmJit* sm_compile (const char* name, SmExpr* expr) {
 	POP_BLOCK;
 
 	char* unit = sm_code_link (code);
-	puts(unit);
 	sm_code_unref (code);
 	
 	SmJit* mod = sm_jit_compile ("<stdin>", unit);

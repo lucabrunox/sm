@@ -28,6 +28,7 @@ void sm_parser_free (SmParser* parser) {
 #define FUNC2(n) static SmExpr* n (SmParser* parser, SmExpr* inner)
 #define TYPE (parser->cur.type)
 #define EXPECT(x) if (!CASE(x)) { printf("expected " x ", got %s\n", TYPE); return NULL; }
+#define SKIP(x) if (!CASE(x)) { printf("expected " x ", got %s\n", TYPE); return NULL; } NEXT;
 #define ACCEPT(x) ((CASE(x)) ? (NEXT, 1) : 0)
 #define ACCEPT_ID(x) ((CASE("id")) ? (!strcmp(STR, x) ? (NEXT, 1) : 0) : 0)
 #define SKIP(x) EXPECT(x); NEXT;
@@ -45,6 +46,8 @@ static char* identifier (SmParser* parser) {
 	NEXT;
 	return val;
 }
+
+FUNC(seq);
 
 FUNC2(member) {
 	char* id = identifier(parser);
@@ -66,6 +69,10 @@ FUNC(primary) {
 		STR=NULL;
 		NEXT;
 		expr = EXPR(tmp);
+	} else if (CASE("(")) {
+		SKIP("(");
+		expr = seq(parser);
+		SKIP(")");
 	} else {
 		printf("unexpected %s\n", TYPE);
 		abort();

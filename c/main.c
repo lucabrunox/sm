@@ -1,5 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <glib.h>
+
 #include "llvm.h"
 #include "code.h"
 #include "lexer.h"
@@ -7,7 +9,7 @@
 #include "astdumper.h"
 #include "compile.h"
 
-int main() {
+int main() {		
 	SmLexer lexer;
 	/* sm_lexer_init (&lexer, "'foo\n'"); */
 	sm_lexer_init (&lexer, "asd = 'foo\n'; asd");

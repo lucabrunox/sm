@@ -1,3 +1,4 @@
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -7,15 +8,15 @@
 
 #define PEEK (*(lexer->ptr))
 #define READ (PEEK ? ((PEEK == '\n' ? (lexer->row++, lexer->col=0) : lexer->col++), *(lexer->ptr)++) : 0)
-#define LEX1(e) if (c == e[0]) { READ; return { .start=start, .type=e }; }
-#define LEX2(e1,e2) if (c == e1[0]) { READ; if (PEEK == e2[0]) { READ; return { .start=start, .type=e1 e2 }; } else { return { .start=start, .type=e1 }; } }
+#define LEX1(e) if (c == e[0]) { READ; SmToken t = { .start=start, .type=e }; return t; }
+#define LEX2(e1,e2) if (c == e1[0]) { READ; if (PEEK == e2[0]) { READ; SmToken t = { .start=start, .type=e1 e2 }; return t; } else { SmToken t = { .start=start, .type=e1 }; return t; } }
 
 void sm_lexer_init (SmLexer* lexer, const char* buf) {
 	lexer->ptr = buf;
 	lexer->row = lexer->col = 0;
 }
 
-void sm_lexer_destroy (void) {
+void sm_lexer_destroy (SmLexer* lexer) {
 }
 
 SmToken sm_lexer_next (SmLexer* lexer) {
@@ -24,7 +25,8 @@ SmToken sm_lexer_next (SmLexer* lexer) {
 	while (isspace (PEEK)) READ;
 	char c = PEEK;
 	if (!c) {
-		return { .start=start, .type="eof" };
+		SmToken t = { .start=start, .type="eof" };
+		return t;
 	}
 
 	while (c == '#') {
@@ -33,7 +35,8 @@ SmToken sm_lexer_next (SmLexer* lexer) {
 		c = PEEK;
 	}
 	if (!c) {
-		return { .start=start, .type="eof" };
+		SmToken t = { .start=start, .type="eof" };
+		return t;
 	}
 
 	if (isalpha (c)) {
@@ -74,9 +77,11 @@ SmToken sm_lexer_next (SmLexer* lexer) {
 	if (c == '!') {
 		READ;
 		if (READ != '=') {
-			return { .start=start, .type="unknown" };
+			SmToken t = { .start=start, .type="unknown" };
+			return t;
 		}
-		return { .start=start, .type="!=" };
+		SmToken t = { .start=start, .type="!=" };
+		return t;
 	}
 
 	LEX1("+");
@@ -114,7 +119,8 @@ SmToken sm_lexer_next (SmLexer* lexer) {
 				}
 			}
 			if (!PEEK) {
-				return { .start=start, .type="unterminated string" };
+				SmToken t = { .start=start, .type="unterminated string" };
+				return t;
 			}
 			char* old = str;
 			asprintf(&str, "%s%c", str ? str : "", READ);
@@ -126,7 +132,8 @@ SmToken sm_lexer_next (SmLexer* lexer) {
 		return t;
 	}
 	
-	return { .start=start, .type="unknown" };
+	SmToken t = { .start=start, .type="unknown" };
+	return t;
 }
 
 void sm_token_destroy (SmToken* token) {

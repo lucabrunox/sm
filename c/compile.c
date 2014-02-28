@@ -1,5 +1,6 @@
 #include <assert.h>
 #include <stdio.h>
+#include <glib.h>
 
 #include "compile.h"
 #include "ast.h"
@@ -7,7 +8,6 @@
 #include "code.h"
 #include "uthash/src/utarray.h"
 #include "uthash/src/utlist.h"
-#include "uthash/src/uthash.h"
 
 #define DEFUNC(n,x) static SmVarType n (SmCompile* comp, x* expr)
 #define GET_CODE SmCode* code = comp->code
@@ -32,11 +32,13 @@ typedef struct {
 	int isconst;
 } SmVarType;
 
-typedef struct {
-	char name[256];
-	int id;
-	UT_hash_handle hh;
-} SmScope;
+typedef struct _SmScope SmScope;
+
+struct _SmScope {
+	int level;
+	GHashTable* map;
+	SmScope* parent;
+};
 
 typedef struct {
 	SmCode* code;
@@ -44,10 +46,24 @@ typedef struct {
 	SmVarType ret;
 	SmScope* scope;
 	int scopeid;
-	int thunkid;
+	int next_thunkid;
 } SmCompile;
 
 static SmVarType call_compile_table (SmCompile* comp, SmExpr* expr);
+
+static int scope_lookup (SmScope* scope, const char* name, int* level) {
+	while (scope) {
+		int64_t id;
+		if (g_hash_table_lookup_extended (scope->map, name, NULL, &id)) {
+			if (level) {
+				*level = scope->level;
+			}
+			return id;
+		}
+		scope = scope->parent;
+	}
+	return -1;
+}
 
 static void begin_thunk_func (SmCompile* comp, int thunkid) {
 	GET_CODE;
@@ -123,22 +139,29 @@ DEFUNC(compile_member_expr, SmMemberExpr) {
 		printf("unsupported inner member\n");
 		exit(0);
 	}
-	
-	SmScope* entry;
-	HASH_FIND_STR(comp->scope, expr->name, entry);
-	if (!entry) {
+
+	int level;
+	int varid = scope_lookup (comp->scope, expr->name, &level);
+	if (varid < 0) {
 		printf("not in scope %s\n", expr->name);
 		exit(0);
 	}
 
-	int addr = EMIT("getelementptr %%thunk** %%%d, i32 %d", comp->scopeid, entry->id);
+	int addr = EMIT("getelementptr %%thunk** %%%d, i32 %d", comp->scopeid, varid);
 	int res = EMIT("load %%thunk** %%%d", addr);
 	RETVAL({ .id=res });
 }
 
 DEFUNC(compile_seq_expr, SmSeqExpr) {
 	GET_CODE;
-	comp->scope = NULL;
+	
+	SmScope* scope = (SmScope*) calloc(1, sizeof (SmScope));
+	if (comp->scope) {
+		scope->parent = comp->scope;
+		scope->level = comp->scope->level+1;
+	}
+	scope->map = g_hash_table_new (g_str_hash, g_str_equal);
+	comp->scope = scope;
 
 	/* compute scope size */
 	int varid = 0;
@@ -147,19 +170,16 @@ DEFUNC(compile_seq_expr, SmSeqExpr) {
 		GPtrArray* names = el->expr->names;
 		for (int i=0; i < names->len; i++) {
 			const char* name = (const char*) names->pdata[i];
+			printf("%d\n", strlen(name));
 
-			SmScope* entry;
-			HASH_FIND_STR(comp->scope, name, entry);
-			if (entry) {
+			int existing = scope_lookup (scope, name, NULL);
+			if (existing >= 0) {
 				printf("shadowing %s\n", name);
 				exit(0);
 			}
 
 			varid++;
-			entry = (SmScope*)calloc(1, sizeof(SmScope));
-			strcpy (entry->name, name);
-			entry->id = varid;
-			HASH_ADD_STR(comp->scope, name, entry);
+			g_hash_table_insert (scope->map, name, GINT_TO_POINTER(varid));
 		}
 	}
 
@@ -173,20 +193,28 @@ DEFUNC(compile_seq_expr, SmSeqExpr) {
 		GPtrArray* names = el->expr->names;
 		if (names->len == 1) {
 			const char* name = (const char*) names->pdata[0];
-			SmScope* found;
-			HASH_FIND_STR(comp->scope, name, found);
-			if (!found) {
+			int level;
+			varid = scope_lookup (scope, name, &level);
+			if (varid < 0) {
 				printf ("assert not found '%s'\n", name);
 				exit(0);
 			}
-			
+
 			SmVarType value = VISIT(el->expr->value);
-			int addr = EMIT("getelementptr %%thunk** %%%d, i32 %d", comp->scopeid, found->id);
+			int addr = EMIT("getelementptr %%thunk** %%%d, i32 %d", comp->scopeid, varid);
 			EMIT_("store %%thunk* %%%d, %%thunk** %%%d", value.id, addr);
+		} else {
+			printf("unsupported pattern match\n");
+			exit(0);
 		}
 	}
 
 	SmVarType result = VISIT(expr->result);
+
+	comp->scope = scope->parent;
+	g_hash_table_unref (scope->map);
+	free (scope);
+
 	return result;
 }
 
@@ -205,7 +233,7 @@ DEFUNC(compile_literal, SmLiteral) {
 		EMIT_ ("@.const%d = private constant [%d x i8] c\"%s\\00\"", consttmp, len, expr->str);
 		POP_BLOCK;
 
-		int thunkid = comp->thunkid++;
+		int thunkid = comp->next_thunkid++;
 		// expression code
 		begin_thunk_func (comp, thunkid);
 		int ptr = EMIT ("getelementptr [%d x i8]* @.const%d, i32 0, i32 0", len, consttmp);

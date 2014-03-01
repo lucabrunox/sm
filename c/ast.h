@@ -32,7 +32,7 @@ typedef struct _SmAssignList SmAssignList;
 
 typedef struct {
 	SmExpr base;
-	GQueue* assigns;
+	GPtrArray* assigns;
 	SmExpr* result;
 } SmSeqExpr;
 

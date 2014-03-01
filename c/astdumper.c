@@ -1,3 +1,4 @@
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -66,16 +67,13 @@ static char* dump_seq_expr (SmSeqExpr* expr) {
 	char* res = strdup("(");
 	char* old;
 	char* inner;
-	GList* head = expr->assigns->head;
-	while (head) {
-		SmAssignExpr* a = (SmAssignExpr*) head->data;
+	for (int i=0; i < expr->assigns->len; i++) {
+		SmAssignExpr* a = (SmAssignExpr*) expr->assigns->pdata[i];
 		old = res;
 		inner = sm_ast_dump (EXPR(a));
 		res = str("%s%s;\n", res, inner);
 		free (inner);
 		free (old);
-
-		head = head->next;
 	}
 
 	old = res;

@@ -1,6 +1,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <glib.h>
+#include <string.h>
 
 #include "lexer.h"
 #include "parser.h"
@@ -22,13 +23,12 @@ void sm_parser_free (SmParser* parser) {
 	free (parser);
 }
 
-#define NEXT (sm_token_destroy(&parser->cur), parser->cur = sm_lexer_next(&parser->lexer), parser->cur)
+#define NEXT (sm_token_destroy(&parser->cur), parser->cur = sm_lexer_next(&parser->lexer))
 #define PTOK puts(parser->cur.type)
 #define FUNC(n) static SmExpr* n (SmParser* parser)
 #define FUNC2(n) static SmExpr* n (SmParser* parser, SmExpr* inner)
 #define TYPE (parser->cur.type)
 #define EXPECT(x) if (!CASE(x)) { printf("expected " x ", got %s\n", TYPE); return NULL; }
-#define SKIP(x) if (!CASE(x)) { printf("expected " x ", got %s\n", TYPE); return NULL; } NEXT;
 #define ACCEPT(x) ((CASE(x)) ? (NEXT, 1) : 0)
 #define ACCEPT_ID(x) ((CASE("id")) ? (!strcmp(STR, x) ? (NEXT, 1) : 0) : 0)
 #define SKIP(x) EXPECT(x); NEXT;
@@ -125,9 +125,9 @@ FUNC(seq) {
 	}
 
 	NEW(seq, SmSeqExpr, SM_SEQ_EXPR);
-	seq->assigns = g_queue_new ();
+	seq->assigns = g_ptr_array_new ();
 	while (ACCEPT(";")) {
-		g_queue_push_tail (seq->assigns, expr);
+		g_ptr_array_add (seq->assigns, expr);
 
 		expr = assign(parser);
 		CHECK(expr);

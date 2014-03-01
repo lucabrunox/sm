@@ -2,6 +2,8 @@
 #include <stdio.h>
 #include <glib.h>
 #include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
 
 #include "compile.h"
 #include "ast.h"
@@ -19,7 +21,7 @@
 #define THUNK_FUNC 0
 #define THUNK_JUMP 1
 #define THUNK_CACHE 2
-#define THUNK_SCOPE 3
+#define THUNK_SCOPES 3
 
 typedef struct {
 	int id;
@@ -48,7 +50,7 @@ static SmVarType call_compile_table (SmCompile* comp, SmExpr* expr);
 static int scope_lookup (SmScope* scope, const char* name, int* level) {
 	while (scope) {
 		int64_t id;
-		if (g_hash_table_lookup_extended (scope->map, name, NULL, &id)) {
+		if (g_hash_table_lookup_extended (scope->map, (gpointer)name, NULL, (gpointer*)&id)) {
 			if (level) {
 				*level = scope->level;
 			}
@@ -110,7 +112,7 @@ static int eval_thunk (SmCompile* comp, int thunk) {
 
 static int create_thunk (SmCompile* comp, int thunkid, int notseq) {
 	GET_CODE;
-	int alloc = CALL("i8* @malloc(i32 %d)", sizeof(void*)*THUNK_SCOPE+sizeof(void*)*(comp->scope->level+1));
+	int alloc = CALL("i8* @malloc(i32 %lu)", sizeof(void*)*THUNK_SCOPES+sizeof(void*)*(comp->scope->level+1));
 	int thunk = BITCAST("i8* %%%d", "%%thunk*", alloc);
 
 	int funcptr = GETPTR("%%thunk* %%%d", "i32 0, i32 %d", thunk, THUNK_FUNC);
@@ -121,11 +123,11 @@ static int create_thunk (SmCompile* comp, int thunkid, int notseq) {
 
 	if (comp->scope->parent) {
 		// 0 = first param
-		int srcptr = GETPTR("%%thunk* %%0", "i32 0, i32 %d, i32 0", THUNK_SCOPE);
-		int destptr = GETPTR("%%thunk* %%%d", "i32 0, i32 %d, i32 0", thunk, THUNK_SCOPE);
+		int srcptr = GETPTR("%%thunk* %%0", "i32 0, i32 %d, i32 0", THUNK_SCOPES);
+		int destptr = GETPTR("%%thunk* %%%d", "i32 0, i32 %d, i32 0", thunk, THUNK_SCOPES);
 		int srccast = BITCAST("%%thunk*** %%%d", "i8*", srcptr);
 		int destcast = BITCAST("%%thunk*** %%%d", "i8*", destptr);
-		CALL_("void @llvm.memcpy.p0i8.p0i8.i32(i8* %%%d, i8* %%%d, i32 %d, i32 1, i1 false)", destcast, srccast, sizeof(void*)*(comp->scope->level+notseq));
+		CALL_("void @llvm.memcpy.p0i8.p0i8.i32(i8* %%%d, i8* %%%d, i32 %lu, i32 1, i1 false)", destcast, srccast, sizeof(void*)*(comp->scope->level+notseq));
 	}
 
 	return thunk;
@@ -146,7 +148,7 @@ DEFUNC(compile_member_expr, SmMemberExpr) {
 	}
 
 	// 0 = first param
-	int scopeptr = GETPTR("%%thunk* %%0", "i32 0, i32 %d, i32 %d", THUNK_SCOPE, level);
+	int scopeptr = GETPTR("%%thunk* %%0", "i32 0, i32 %d, i32 %d", THUNK_SCOPES, level);
 	int scope = LOAD("%%thunk*** %%%d", scopeptr);
 	int addr = GETPTR("%%thunk** %%%d", "i32 %d", scope, varid);
 	int res = LOAD("%%thunk** %%%d", addr);
@@ -166,10 +168,8 @@ DEFUNC(compile_seq_expr, SmSeqExpr) {
 
 	/* compute scope size */
 	int varid = 0;
-	SmAssignList* el = NULL;
-	GList* head = expr->assigns->head;
-	while (head) {
-		SmAssignExpr* assign = (SmAssignExpr*) head->data;
+	for (int i=0; i < expr->assigns->len; i++) {
+		SmAssignExpr* assign = (SmAssignExpr*) expr->assigns->pdata[i];
 		GPtrArray* names = assign->names;
 		for (int i=0; i < names->len; i++) {
 			const char* name = (const char*) names->pdata[i];
@@ -180,10 +180,8 @@ DEFUNC(compile_seq_expr, SmSeqExpr) {
 				exit(0);
 			}
 
-			g_hash_table_insert (scope->map, name, GINT_TO_POINTER(varid++));
+			g_hash_table_insert (scope->map, (gpointer)name, GINT_TO_POINTER(varid++));
 		}
-		
-		head = head->next;
 	}
 
 	int thunkid = comp->next_thunkid++;
@@ -193,13 +191,12 @@ DEFUNC(compile_seq_expr, SmSeqExpr) {
 	int alloc = CALL("i8* @malloc(i32 %d)", allocsize);
 	int scopeid = BITCAST("i8* %%%d", "%%thunk**", alloc);
 	// set to the current thunk, 0 = first param
-	int scopeptr = GETPTR("%%thunk* %%0", "i32 0, i32 %d, i32 %d", THUNK_SCOPE, scope->level);
+	int scopeptr = GETPTR("%%thunk* %%0", "i32 0, i32 %d, i32 %d", THUNK_SCOPES, scope->level);
 	STORE("%%thunk** %%%d", "%%thunk*** %%%d", scopeid, scopeptr);
 
 	/* assign values to scope */
-	head = expr->assigns->head;
-	while (head) {
-		SmAssignExpr* assign = (SmAssignExpr*) head->data;
+	for (int i=0; i < expr->assigns->len; i++) {
+		SmAssignExpr* assign = (SmAssignExpr*) expr->assigns->pdata[i];
 		GPtrArray* names = assign->names;
 		if (names->len == 1) {
 			const char* name = (const char*) names->pdata[0];
@@ -217,8 +214,6 @@ DEFUNC(compile_seq_expr, SmSeqExpr) {
 			printf("unsupported pattern match\n");
 			exit(0);
 		}
-
-		head = head->next;
 	}
 
 	SmVarType resthunk = VISIT(expr->result);

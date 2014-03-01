@@ -102,7 +102,7 @@ static char* dump_seq_expr (SmSeqExpr* expr) {
 
 	old = res;
 	inner = sm_ast_dump (expr->result);
-	res = str("%s%s)", res ? res : "", inner);
+	res = str("%s%s", res ? res : "", inner);
 	free (old);
 	free (inner);
 	return res;

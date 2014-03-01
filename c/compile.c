@@ -208,7 +208,7 @@ static int begin_try_var (SmCompile* comp, SmVar var, SmVarType type) {
 	
 	if (var.type != TYPE_UNK) {
 		if (var.type != type) {
-			printf ("expected %d\n", type);
+			printf ("compile-time expected %d, got %d\n", type, var.type);
 			exit(0);
 		} else {
 			return object;
@@ -263,9 +263,9 @@ static void end_try_var (SmCompile* comp) {
 		[TYPE_NIL] = -1
 	};
 	
-	int len = strlen("expected 0\n")+1;
+	int len = strlen("runtime expected 0\n")+1;
 	if (consttmp[exc->type] < 0) {
-		char* str = g_strdup_printf ("expected %d\n", exc->type);
+		char* str = g_strdup_printf ("runtime expected %d\n", exc->type);
 		PUSH_BLOCK(comp->decls);
 		consttmp[exc->type] = sm_code_get_temp (code);
 		EMIT_ ("@.const%d = private constant [%d x i8] c\"%s\\00\", align 8", consttmp[exc->type], len, str);
@@ -439,7 +439,11 @@ DEFUNC(compile_func_expr, SmFuncExpr) {
 	begin_thunk_func (comp, thunkid);
 	COMMENT("function creation thunk func");
 	SmVar result = VISIT(expr->body);
-	thunk_return (comp, result.id);
+	int obj = result.id;
+	if (result.isthunk) {
+		obj = eval_thunk (comp, obj);
+	}
+	thunk_return (comp, obj);
 	end_thunk_func (comp);
 
 	// build thunk
@@ -517,7 +521,7 @@ DEFUNC(compile_call_expr, SmCallExpr) {
 	// build thunk
 	COMMENT("create call thunk");
 	int thunk = create_thunk (comp, thunkid);
-	RETVAL(id=thunk, isthunk=TRUE, type=TYPE_FUN);
+	RETVAL(id=thunk, isthunk=TRUE, type=TYPE_UNK);
 }
 
 #define CAST(x) (SmVar (*)(SmCompile*, SmExpr*))(x)

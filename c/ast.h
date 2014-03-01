@@ -13,9 +13,12 @@ typedef enum {
 	SM_FUNC_EXPR
 } SmExprType;
 
-typedef struct {
+typedef struct _SmExpr SmExpr;
+
+struct _SmExpr {
 	SmExprType type;
-} SmExpr;
+	SmExpr* parent;
+};
 
 typedef struct {
 	SmExpr base;

@@ -33,7 +33,7 @@ void sm_parser_free (SmParser* parser) {
 #define ACCEPT_ID(x) ((CASE("id")) ? (!strcmp(STR, x) ? (NEXT, 1) : 0) : 0)
 #define SKIP(x) EXPECT(x); NEXT;
 #define STR (parser->cur.str)
-#define NEW(n,x,t) x* n = (x*)calloc(1, sizeof(x)); (n)->base.type=t;
+#define NEW(n,x,t) x* n = g_new(x, 1); (n)->base.type=t
 #define SAVE (*parser)
 #define RESTORE(x) parser->lexer=x.cur.start; NEXT
 #define CHECK(x) if (!x) return NULL
@@ -56,6 +56,7 @@ FUNC2(member, SmExpr* inner) {
 	NEW(expr, SmMemberExpr, SM_MEMBER_EXPR);
 	expr->inner = inner;
 	expr->name = id;
+	inner->parent = EXPR(expr);
 	return EXPR(expr);
 }
 
@@ -99,6 +100,7 @@ FUNC2(function, int allow_seq) {
 				NEW(expr, SmFuncExpr, SM_FUNC_EXPR);
 				expr->params = params;
 				expr->body = body;
+				body->parent = EXPR(expr);
 				return EXPR(expr);
 			} else {
 				g_ptr_array_unref (params);
@@ -132,6 +134,7 @@ FUNC(assign) {
 			NEW(a, SmAssignExpr, SM_ASSIGN_EXPR);
 			a->names = names;
 			a->value = expr;
+			expr->parent = EXPR(a);
 			return EXPR(a);
 		} else {
 			goto rollback;
@@ -159,6 +162,7 @@ FUNC(seq) {
 
 		expr = assign(parser);
 		CHECK(expr);
+		expr->parent = EXPR(seq);
 		if (expr->type != SM_ASSIGN_EXPR) {
 			seq->result = expr;
 			break;

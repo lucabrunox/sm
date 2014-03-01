@@ -14,13 +14,13 @@ struct _SmParser {
 };
 
 SmParser* sm_parser_new (void) {
-	SmParser* parser = (SmParser*) calloc (1, sizeof (SmParser));
+	SmParser* parser = g_new0 (SmParser, 1);
 	return parser;
 }
 
 void sm_parser_free (SmParser* parser) {
 	sm_token_destroy (&parser->cur);
-	free (parser);
+	g_free (parser);
 }
 
 #define NEXT (sm_token_destroy(&parser->cur), parser->cur = sm_lexer_next(&parser->lexer))
@@ -33,7 +33,7 @@ void sm_parser_free (SmParser* parser) {
 #define ACCEPT_ID(x) ((CASE("id")) ? (!strcmp(STR, x) ? (NEXT, 1) : 0) : 0)
 #define SKIP(x) EXPECT(x); NEXT;
 #define STR (parser->cur.str)
-#define NEW(n,x,t) x* n = g_new(x, 1); (n)->base.type=t
+#define NEW(n,x,t) x* n = g_new0(x, 1); (n)->base.type=t
 #define SAVE (*parser)
 #define RESTORE(x) parser->lexer=x.cur.start; NEXT
 #define CHECK(x) if (!x) return NULL
@@ -56,7 +56,9 @@ FUNC2(member, SmExpr* inner) {
 	NEW(expr, SmMemberExpr, SM_MEMBER_EXPR);
 	expr->inner = inner;
 	expr->name = id;
-	inner->parent = EXPR(expr);
+	if (inner) {
+		inner->parent = EXPR(expr);
+	}
 	return EXPR(expr);
 }
 

@@ -3,6 +3,7 @@
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
+#include <glib.h>
 
 #include "code.h"
 
@@ -27,7 +28,7 @@ struct _SmCode {
 };
 
 SmCode* sm_code_new (void) {
-	SmCode* ret = (SmCode*) calloc (1, sizeof (SmCode));
+	SmCode* ret = g_new0 (SmCode, 1);
 	sm_code_ref (ret);
 	return ret;
 }
@@ -129,7 +130,7 @@ char* sm_code_link (SmCode* code) {
 }
 
 SmCodeBlock* sm_code_new_block (SmCode* code) {
-	SmCodeBlock* block = (SmCodeBlock*) calloc(1, sizeof(SmCodeBlock));
+	SmCodeBlock* block = g_new0 (SmCodeBlock, 1);
 	if (!code->head) {
 		code->head = code->tail = block;
 	} else {
@@ -158,9 +159,9 @@ void sm_code_unref (SmCode* code) {
 		SmCodeBlock* cur = code->head;
 		while (cur) {
 			SmCodeBlock* tmp = cur->next;
-			free (cur);
+			g_free (cur);
 			cur = tmp;
 		}
-		free (code);
+		g_free (code);
 	}
 }

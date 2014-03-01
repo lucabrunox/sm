@@ -1,4 +1,5 @@
 #include <stdlib.h>
+#include <glib.h>
 
 #include "objectpool.h"
 
@@ -12,7 +13,7 @@ struct _SmObjectPool {
 };
 
 SmObjectPool* sm_object_pool_new (int nobjects, int objectsize) {
-	SmObjectPool* pool = (SmObjectPool*) calloc (1, sizeof (SmObjectPool));
+	SmObjectPool* pool = g_new0 (SmObjectPool, 1);
 	pool->nobjects = nobjects;
 	pool->objectsize = objectsize;
 	pool->cursize = 16;
@@ -25,7 +26,7 @@ void sm_object_pool_free (SmObjectPool* pool) {
 		free (pool->objects[i]);
 	}
 	free (pool->objects);
-	free (pool);
+	g_free (pool);
 }
 
 void* sm_object_pool_acquire (SmObjectPool* pool) {

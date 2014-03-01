@@ -89,24 +89,31 @@ static int scope_lookup (SmScope* scope, const char* name, int* level) {
 	return -1;
 }
 
-static void begin_thunk_func (SmCompile* comp, int thunkid, int nparams) {
-	GET_CODE;
-
-	PUSH_NEW_BLOCK;
+static char* closure_params (int nparams) {
 	char* params = NULL;
 	for (int i=0; i < nparams; i++) {
 		char* old = params;
 		params = g_strconcat (", %thunk*", params, NULL);
 		free (old);
 	}
-	
+	return params;
+}
+
+static void begin_closure_func (SmCompile* comp, int thunkid, int nparams) {
+	GET_CODE;
+
+	PUSH_NEW_BLOCK;
+	char* params = closure_params (nparams);
 	BEGIN_FUNC("%%tagged", "thunk_%d_eval", "%%thunk*%s", thunkid, params ? params : "");
+	g_free (params);
+	
 	int thunk = sm_code_get_temp (code); // first param
 	LABEL("entry");
 	if (!nparams) {
 		// next call will point to the cache
 		int funcptr = GETPTR("%%thunk* %%%d", "i32 0, i32 %d", thunk, THUNK_FUNC);
-		STORE("%%thunkfunc " FUNC ("thunk_cache"), "%%thunkfunc* %%%d", funcptr);
+		int func = BITCAST("%%tagged (%%thunk*)* " FUNC("thunk_cache"), "%%tagged (%%thunk*, ...)*");
+		STORE("%%thunkfunc %%%d", "%%thunkfunc* %%%d", func, funcptr);
 	} else {
 		// reserve for parameters
 		for (int i=0; i < nparams; i++) {
@@ -115,7 +122,11 @@ static void begin_thunk_func (SmCompile* comp, int thunkid, int nparams) {
 	}
 }
 
-static void thunk_return (SmCompile* comp, int result, int docache) {
+static void begin_thunk_func (SmCompile* comp, int thunkid) {
+	begin_closure_func (comp, thunkid, 0);
+}
+
+static void closure_return (SmCompile* comp, int result, int docache) {
 	GET_CODE;
 	
 	// cache object
@@ -126,6 +137,10 @@ static void thunk_return (SmCompile* comp, int result, int docache) {
 	}
 	
 	RET("%%tagged %%%d", result);
+}
+
+static void thunk_return (SmCompile* comp, int result) {
+	closure_return (comp, result, TRUE);
 }
 
 static void end_thunk_func (SmCompile* comp) {
@@ -140,18 +155,23 @@ static int eval_thunk (SmCompile* comp, int thunk) {
 	int func = LOAD("%%thunkfunc* %%%d", funcptr);
 
 	// eval thunk
+	func = BITCAST("%%tagged (%%thunk*, ...)* %%%d", "%%tagged (%%thunk*)*", func);
 	int object = CALL("%%tagged %%%d(%%thunk* %%%d)", func, thunk);
 
 	return object;
 }
 
-static int create_thunk (SmCompile* comp, int thunkid, int notseq) {
+static int create_closure (SmCompile* comp, int thunkid, int notseq, int nparams) {
 	GET_CODE;
 	int alloc = CALL("i8* @aligned_alloc(i32 8, i32 %lu)", sizeof(void*)*THUNK_SCOPES+sizeof(void*)*(comp->scope->level+1));
 	int thunk = BITCAST("i8* %%%d", "%%thunk*", alloc);
 
 	int funcptr = GETPTR("%%thunk* %%%d", "i32 0, i32 %d", thunk, THUNK_FUNC);
-	STORE("%%thunkfunc " FUNC("thunk_%d_eval"), "%%thunkfunc* %%%d", thunkid, funcptr);
+	char* params = closure_params (nparams);
+	int func = BITCAST("%%tagged (%%thunk*%s)* " FUNC("thunk_%d_eval"), "%%tagged (%%thunk*, ...)*",
+					   params ? params : "", thunkid);
+	g_free (params);
+	STORE("%%thunkfunc %%%d", "%%thunkfunc* %%%d", func, funcptr);
 
 	if (comp->scope->parent) {
 		// 0 = first param
@@ -163,6 +183,10 @@ static int create_thunk (SmCompile* comp, int thunkid, int notseq) {
 	}
 
 	return thunk;
+}
+
+static int create_thunk (SmCompile* comp, int thunkid) {
+	return create_closure (comp, thunkid, 1, 0);
 }
 
 static int begin_try_string (SmCompile* comp, SmVar var) {
@@ -303,18 +327,22 @@ DEFUNC(compile_seq_expr, SmSeqExpr) {
 
 	int thunkid = comp->next_thunkid++;
 
-	begin_thunk_func (comp, thunkid, func ? func->params->len : 0);
+	begin_closure_func (comp, thunkid, func ? func->params->len : 0);
+	COMMENT("seq/func closure");
 
 	int allocsize = varid*sizeof(void*);
+	COMMENT("alloc scope");
 	int alloc = CALL("i8* @aligned_alloc(i32 8, i32 %d)", allocsize);
 	int scopeid = BITCAST("i8* %%%d", "%%thunk**", alloc);
 	// set to the current thunk, 0 = first param
+	COMMENT("set this scope to the thunk scopes");
 	int scopeptr = GETPTR("%%thunk* %%0", "i32 0, i32 %d, i32 %d", THUNK_SCOPES, scope->level);
 	STORE("%%thunk** %%%d", "%%thunk*** %%%d", scopeid, scopeptr);
 
 	if (func) {
 		/* assign parameters to scope */
 		for (int i=0; i < func->params->len; i++) {
+			COMMENT("assign param %d", i);
 			int addr = GETPTR("%%thunk** %%%d", "i32 %d", scopeid, varid);
 			STORE("%%thunk* %%%d", "%%thunk** %%%d", i+1, addr); // parameter i+1, because param 0 is the closure itself
 		}
@@ -326,14 +354,14 @@ DEFUNC(compile_seq_expr, SmSeqExpr) {
 		GPtrArray* names = assign->names;
 		if (names->len == 1) {
 			const char* name = (const char*) names->pdata[0];
-			int level;
-			varid = scope_lookup (scope, name, &level);
+			varid = scope_lookup (scope, name, NULL);
 			if (varid < 0) {
 				printf ("assert not found '%s'\n", name);
 				exit(0);
 			}
 
 			SmVar value = VISIT(assign->value);
+			COMMENT("assign expression to %s, level %d", name, scope->level);
 			int addr = GETPTR("%%thunk** %%%d", "i32 %d", scopeid, varid);
 			STORE("%%thunk* %%%d", "%%thunk** %%%d", value.id, addr);
 		} else {
@@ -347,10 +375,10 @@ DEFUNC(compile_seq_expr, SmSeqExpr) {
 	if (result.isthunk) {
 		object = eval_thunk (comp, result.id);
 	}
-	thunk_return (comp, object, !func);
+	closure_return (comp, object, !func);
 	end_thunk_func (comp);
 
-	int thunk = create_thunk (comp, thunkid, FALSE);
+	int thunk = create_closure (comp, thunkid, 0, func ? func->params->len : 0);
 
 	comp->scope = scope->parent;
 	g_hash_table_unref (scope->map);
@@ -360,23 +388,37 @@ DEFUNC(compile_seq_expr, SmSeqExpr) {
 		RETVAL(id=thunk, isthunk=TRUE, type=result.type);
 	} else {
 		// closure object
+		COMMENT("tag closure");
 		int closure = TOINT("%%thunk* %%%d", "%%tagged", thunk);
-		closure = EMIT("lshr exact i64 %%%d, 3", closure);
-		closure = EMIT("or i64 %%%d, %llu", closure, TAG_FUN);
+		closure = EMIT("lshr exact %%tagged %%%d, 3", closure);
+		closure = EMIT("or %%tagged %%%d, %llu", closure, TAG_FUN);
 		RETVAL(id=closure, isthunk=FALSE, type=TYPE_FUN);
 	}
 }
 
 DEFUNC(compile_func_expr, SmFuncExpr) {
+	GET_CODE; 
 	// seq
+	// FIXME: drop this thunk and return the real closure
+	int thunkid = comp->next_thunkid++;
+	begin_thunk_func (comp, thunkid);
+	COMMENT("function creation thunk func");
 	SmVar result = VISIT(expr->body);
-	return result;
+	thunk_return (comp, result.id);
+	end_thunk_func (comp);
+
+	// build thunk
+	COMMENT("function creation thunk");
+	int thunk = create_thunk (comp, thunkid);
+	RETVAL(id=thunk, isthunk=TRUE, type=TYPE_FUN);
 }
 
 DEFUNC(compile_literal, SmLiteral) {
 	GET_CODE;
 	if (expr->str) {
 		// define constant string
+		// FIXME: do not create a thunk
+		
 		PUSH_BLOCK(comp->decls);
 		int consttmp = sm_code_get_temp (code);
 		int len = strlen(expr->str)+1;
@@ -386,19 +428,21 @@ DEFUNC(compile_literal, SmLiteral) {
 
 		int thunkid = comp->next_thunkid++;
 		// expression code
-		begin_thunk_func (comp, thunkid, 0);
+		begin_thunk_func (comp, thunkid);
 		int obj = GETPTR("[%d x i8]* @.const%d", "i32 0, i32 0", len, consttmp);
 		obj = EMIT ("ptrtoint i8* %%%d to %%tagged", obj);
 		obj = EMIT ("lshr exact %%tagged %%%d, 3", obj);
 		obj = EMIT ("or %%tagged %%%d, %llu", obj, TAG_STR);
-		thunk_return (comp, obj, TRUE);
+		thunk_return (comp, obj);
 		end_thunk_func (comp);
 
 		// build thunk
-		int thunk = create_thunk (comp, thunkid, 1);
+		int thunk = create_thunk (comp, thunkid);
 		RETVAL(id=thunk, isthunk=TRUE, type=TYPE_STR);
 	} else {
-		assert(0);
+		// TODO: 
+		printf("only string literals supported\n");
+		exit(0);
 	}
 }
 
@@ -434,7 +478,7 @@ SmJit* sm_compile (const char* name, SmExpr* expr) {
 	DECLARE ("void @llvm.memcpy.p0i8.p0i8.i32(i8*, i8*, i32, i32, i1)");
 	DECLARE ("void @llvm.donothing() nounwind readnone");
 	EMIT_ ("%%tagged = type i64");
-	EMIT_ ("%%thunkfunc = type %%tagged (%%thunk*)*");
+	EMIT_ ("%%thunkfunc = type %%tagged (%%thunk*, ...)*");
 	DEFINE_STRUCT ("thunk", "%%thunkfunc, %%tagged, [0 x %%thunk**]"); // func, cached object, scope
 	POP_BLOCK;
 
@@ -468,7 +512,7 @@ SmJit* sm_compile (const char* name, SmExpr* expr) {
 	POP_BLOCK;
 
 	char* unit = sm_code_link (code);
-	/* puts(unit); */
+	puts(unit);
 	sm_code_unref (code);
 	
 	SmJit* mod = sm_jit_compile ("<stdin>", unit);

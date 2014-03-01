@@ -101,10 +101,11 @@ FUNC2(function, int allow_seq) {
 				CHECK(body);
 				if (body->type != SM_SEQ_EXPR) {
 					// create a seq expr because it's easier at compile time
-					NEW(seqexpr, SmSeqExpr, SM_SEQ_EXPR);
-					seqexpr->result = body;
-					body->parent = EXPR(seqexpr);
-					body = EXPR(seqexpr);
+					NEW(seq, SmSeqExpr, SM_SEQ_EXPR);
+					seq->assigns = g_ptr_array_new ();
+					seq->result = body;
+					body->parent = EXPR(seq);
+					body = EXPR(seq);
 				}
 				
 				NEW(expr, SmFuncExpr, SM_FUNC_EXPR);

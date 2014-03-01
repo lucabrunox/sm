@@ -22,6 +22,7 @@
 #define TOPTR(f,t,...) EMIT("inttoptr " f " to " t, ##__VA_ARGS__)
 #define TOINT(f,t,...) EMIT("ptrtoint " f " to " t, ##__VA_ARGS__)
 #define THUNK_NEW() sm_code_emit_new_thunk(code)
+#define COMMENT(x,...) EMIT_("; " x, ##__VA_ARGS__)
 #define NOP CALL_("void @llvm.donothing()")
 #define SWITCH(v,d,t,...) EMIT_("switch " v ", " d " [ " t " ]",##__VA_ARGS__)
 #define SIZEOF(t,...) sizeptr_tmp=EMIT("getelementptr " t " null, i64 1, i32 0",##__VA_ARGS__); \

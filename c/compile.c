@@ -37,7 +37,7 @@ typedef enum {
 	TYPE_FUN,
 	TYPE_LST,
 	TYPE_EOS,
-	TYPE_SMI,
+	TYPE_INT,
 	TYPE_CHR,
 	TYPE_STR,
 	TYPE_NIL,
@@ -60,6 +60,7 @@ struct _SmScope {
 
 typedef struct {
 	SmVar var;
+	SmVarType type;
 	int faillabel;
 } SmExc;
 
@@ -90,10 +91,10 @@ static int scope_lookup (SmScope* scope, const char* name, int* level) {
 }
 
 static char* closure_params (int nparams) {
-	char* params = NULL;
+	char* params = g_strdup ("%closure*");
 	for (int i=0; i < nparams; i++) {
 		char* old = params;
-		params = g_strconcat (", %closure*", params, NULL);
+		params = g_strconcat (params, ", %closure*", NULL);
 		free (old);
 	}
 	return params;
@@ -104,7 +105,7 @@ static void begin_closure_func (SmCompile* comp, int closureid, int nparams) {
 
 	PUSH_NEW_BLOCK;
 	char* params = closure_params (nparams);
-	BEGIN_FUNC("%%tagged", "closure_%d_eval", "%%closure*%s", closureid, params ? params : "");
+	BEGIN_FUNC("%%tagged", "closure_%d_eval", "%s", closureid, params);
 	g_free (params);
 	
 	int closure = sm_code_get_temp (code); // first param
@@ -172,8 +173,8 @@ static int create_closure (SmCompile* comp, int closureid, int notseq, int npara
 
 	int funcptr = GETPTR("%%closure* %%%d", "i32 0, i32 %d", closure, CLOSURE_FUNC);
 	char* params = closure_params (nparams);
-	int func = BITCAST("%%tagged (%%closure*%s)* " FUNC("closure_%d_eval"), "%%closurefunc",
-					   params ? params : "", closureid);
+	int func = BITCAST("%%tagged (%s)* " FUNC("closure_%d_eval"), "%%closurefunc",
+					   params, closureid);
 	g_free (params);
 	STORE("%%closurefunc %%%d", "%%closurefunc* %%%d", func, funcptr);
 
@@ -193,10 +194,11 @@ static int create_thunk (SmCompile* comp, int thunkid) {
 	return create_closure (comp, thunkid, 1, 0);
 }
 
-static int begin_try_string (SmCompile* comp, SmVar var) {
+static int begin_try_var (SmCompile* comp, SmVar var, SmVarType type) {
 	GET_CODE;
 	SmExc* exc = g_new (SmExc, 1);
 	exc->var = var;
+	exc->type = type;
 	g_queue_push_tail (comp->exc_stack, exc);
 	
 	int object = var.id;
@@ -205,49 +207,78 @@ static int begin_try_string (SmCompile* comp, SmVar var) {
 	}
 	
 	if (var.type != TYPE_UNK) {
-		if (var.type != TYPE_STR) {
-			printf ("expected string\n");
+		if (var.type != type) {
+			printf ("expected %d\n", type);
 			exit(0);
 		} else {
 			return object;
 		}
 	} else {
+		COMMENT ("begin_try %d", type);
+		static long long unsigned int tagmap[] = {
+			[TYPE_FUN] = TAG_STR,
+			[TYPE_LST] = TAG_LST,
+			[TYPE_EOS] = 0,
+			[TYPE_INT] = TAG_INT,
+			[TYPE_CHR] = TAG_CHR,
+			[TYPE_STR] = TAG_STR,
+			[TYPE_NIL] = 0
+		};
+		
 		int tag = EMIT("and %%tagged %%%d, %llu", object, TAG_MASK);
-		int isstr = sm_code_get_label (code);
+		int ok = sm_code_get_label (code);
 		exc->faillabel = sm_code_get_label (code);
-		SWITCH("%%tagged %%%d", "label %%fail%d", "i64 %llu, label %%isstr%d", tag, exc->faillabel, TAG_STR, isstr);
-		LABEL("isstr%d", isstr);
+		SWITCH("%%tagged %%%d", "label %%fail%d", "i64 %llu, label %%ok%d", tag, exc->faillabel, tagmap[type], ok);
+		LABEL("ok%d", ok);
 		object = EMIT("and %%tagged %%%d, %llu", object, OBJ_MASK);
 		object = EMIT("shl nuw %%tagged %%%d, 3", object);
-		object = TOPTR("%%tagged %%%d", "i8*", object);
+		if (type == TYPE_STR) {
+			object = TOPTR("%%tagged %%%d", "i8*", object);
+		} else if (type == TYPE_FUN) {
+			object = TOPTR("%%tagged %%%d", "%%closure*", object);
+		} else {
+			assert(FALSE);
+		}
 		return object;
 	}
 }
 
-static void end_try_string (SmCompile* comp) {
+static void end_try_var (SmCompile* comp) {
 	GET_CODE;
 	SmExc* exc = g_queue_pop_tail (comp->exc_stack);
 
 	if (exc->var.type != TYPE_UNK) {
-		free (exc);
+		// handled at compile time
+		g_free (exc);
 		return;
 	}
+
+	static int consttmp[] = {
+		[TYPE_FUN] = -1,
+		[TYPE_LST] = -1,
+		[TYPE_EOS] = -1,
+		[TYPE_INT] = -1,
+		[TYPE_CHR] = -1,
+		[TYPE_STR] = -1,
+		[TYPE_NIL] = -1
+	};
 	
-	static int consttmp = -1;
-	const char* str = "expected string\n";
-	int len = strlen(str)+1;
-	if (consttmp < 0) {
+	int len = strlen("expected 0\n")+1;
+	if (consttmp[exc->type] < 0) {
+		char* str = g_strdup_printf ("expected %d\n", exc->type);
 		PUSH_BLOCK(comp->decls);
-		consttmp = sm_code_get_temp (code);
-		EMIT_ ("@.const%d = private constant [%d x i8] c\"%s\\00\", align 8", consttmp, len, str);
+		consttmp[exc->type] = sm_code_get_temp (code);
+		EMIT_ ("@.const%d = private constant [%d x i8] c\"%s\\00\", align 8", consttmp[exc->type], len, str);
 		POP_BLOCK;
+		free (str);
 	}
-	
+
+	COMMENT ("end_try %d", exc->type);
 	int endstr = sm_code_get_label (code);
-	BR("label %%endstr%d", endstr);
+	BR("label %%end%d", endstr);
 	
 	LABEL("fail%d", exc->faillabel);
-	int strptr = BITCAST("[%d x i8]* @.const%d", "i8*", len, consttmp);
+	int strptr = BITCAST("[%d x i8]* @.const%d", "i8*", len, consttmp[exc->type]);
 	CALL ("i32 (i8*, ...)* @printf(i8* %%%d)", strptr);
 	if (!comp->scope) {
 		// we're in main
@@ -257,7 +288,7 @@ static void end_try_string (SmCompile* comp) {
 		RET("i64 0");
 	}
 
-	LABEL("endstr%d", endstr);
+	LABEL("end%d", endstr);
 
 	free(exc);
 }
@@ -289,7 +320,7 @@ DEFUNC(compile_seq_expr, SmSeqExpr) {
 
 	SmFuncExpr* func = (expr->base.parent && expr->base.parent->type == SM_FUNC_EXPR) ? (SmFuncExpr*) expr->base.parent : NULL;
 	
-	SmScope* scope = (SmScope*) calloc(1, sizeof (SmScope));
+	SmScope* scope = g_new0 (SmScope, 1);
 	if (comp->scope) {
 		scope->parent = comp->scope;
 		scope->level = comp->scope->level+1;
@@ -450,12 +481,52 @@ DEFUNC(compile_literal, SmLiteral) {
 	}
 }
 
+DEFUNC(compile_call_expr, SmCallExpr) {
+	GET_CODE;
+	
+	int thunkid = comp->next_closureid++;
+	begin_thunk_func (comp, thunkid);
+	COMMENT("call thunk func");
+	
+	COMMENT("eval the function");
+	SmVar closurevar = VISIT(expr->func);
+	int closure = begin_try_var (comp, closurevar, TYPE_FUN);
+	end_try_var (comp);
+	
+	char* args = g_strdup_printf ("%%closure* %%%d", closure);
+	for (int i=0; i < expr->args->len; i++) {
+		COMMENT("visit arg %d", i);
+		SmVar arg = VISIT(EXPR(expr->args->pdata[i]));
+		char* old = args;
+		args = g_strdup_printf ("%s, %%closure* %%%d", args, arg.id);
+		g_free (old);
+	}
+
+	COMMENT("call function");
+	int funcptr = GETPTR("%%closure* %%%d", "i32 0, i32 %d", closure, CLOSURE_FUNC);
+	int func = LOAD("%%closurefunc* %%%d", funcptr);
+	char* params = closure_params (expr->args->len);
+	func = BITCAST("%%closurefunc %%%d", "%%tagged (%s)*", func, params);
+	g_free (params);
+	int result = CALL("%%tagged %%%d(%s)", func, args);
+	g_free (args);
+
+	thunk_return (comp, result);
+	end_thunk_func (comp);
+	
+	// build thunk
+	COMMENT("create call thunk");
+	int thunk = create_thunk (comp, thunkid);
+	RETVAL(id=thunk, isthunk=TRUE, type=TYPE_FUN);
+}
+
 #define CAST(x) (SmVar (*)(SmCompile*, SmExpr*))(x)
 SmVar (*compile_table[])(SmCompile*, SmExpr*) = {
 	[SM_MEMBER_EXPR] = CAST(compile_member_expr),
 	[SM_SEQ_EXPR] = CAST(compile_seq_expr),
 	[SM_LITERAL] = CAST(compile_literal),
-	[SM_FUNC_EXPR] = CAST(compile_func_expr)
+	[SM_FUNC_EXPR] = CAST(compile_func_expr),
+	[SM_CALL_EXPR] = CAST(compile_call_expr)
 };
 
 static SmVar call_compile_table (SmCompile* comp, SmExpr* expr) {
@@ -469,7 +540,7 @@ SmJit* sm_compile (const char* name, SmExpr* expr) {
 		sm_jit_init ();
 	}
 
-	SmCompile* comp = (SmCompile*)calloc(1, sizeof(SmCompile));
+	SmCompile* comp = g_new0 (SmCompile, 1);
 	SmCode* code = sm_code_new ();
 	comp->code = code;
 	comp->exc_stack = g_queue_new ();
@@ -503,14 +574,14 @@ SmJit* sm_compile (const char* name, SmExpr* expr) {
 	SmVar exprvar = VISIT(expr);
 
 	// first call
-	int strptr = begin_try_string (comp, exprvar);
+	int strptr = begin_try_var (comp, exprvar, TYPE_STR);
 	CALL ("i32 (i8*, ...)* @printf(i8* %%%d)", strptr);
-	end_try_string (comp);
+	end_try_var (comp);
 
 	// second call
-	strptr = begin_try_string (comp, exprvar);
+	strptr = begin_try_var (comp, exprvar, TYPE_STR);
 	CALL ("i32 (i8*, ...)* @printf(i8* %%%d)", strptr);
-	end_try_string (comp);
+	end_try_var (comp);
 
 	RET("void");
 	END_FUNC;

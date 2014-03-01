@@ -107,6 +107,7 @@ FUNC(call) {
 		return expr;
 	} else {
 		call->func = expr;
+		call->args = args;
 		expr->parent = EXPR(call);
 		return EXPR(call);
 	}
@@ -143,6 +144,7 @@ FUNC2(function, int allow_seq) {
 			} else {
 				g_ptr_array_unref (params);
 				RESTORE(begin);
+				break;
 			}
 		}
 	}

@@ -88,23 +88,36 @@ static char* dump_func_expr (SmFuncExpr* expr) {
 }
 
 static char* dump_seq_expr (SmSeqExpr* expr) {
-	char* res = strdup("(");
+	char* res = NULL;
 	char* old;
 	char* inner;
 	for (int i=0; i < expr->assigns->len; i++) {
 		SmAssignExpr* a = (SmAssignExpr*) expr->assigns->pdata[i];
 		old = res;
 		inner = sm_ast_dump (EXPR(a));
-		res = str("%s%s;\n", res, inner);
+		res = str("%s%s;\n", res ? res : "", inner);
 		free (inner);
 		free (old);
 	}
 
 	old = res;
 	inner = sm_ast_dump (expr->result);
-	res = str("%s%s)", res, inner);
+	res = str("%s%s)", res ? res : "", inner);
 	free (old);
 	free (inner);
+	return res;
+}
+
+static char* dump_call_expr (SmCallExpr* expr) {
+	char* func = sm_ast_dump (expr->func);
+	char* res = func;
+	for (int i=0; i < expr->args->len; i++) {
+		char* arg = sm_ast_dump (EXPR(expr->args->pdata[i]));
+		char* old = res;
+		res = str("%s %s", res, arg);
+		free (old);
+	}
+
 	return res;
 }
 
@@ -114,7 +127,8 @@ char* (*dump_table[])(SmExpr*) = {
 	[SM_SEQ_EXPR] = CAST(dump_seq_expr),
 	[SM_ASSIGN_EXPR] = CAST(dump_assign_expr),
 	[SM_LITERAL] = CAST(dump_literal),
-	[SM_FUNC_EXPR] = CAST(dump_func_expr)
+	[SM_FUNC_EXPR] = CAST(dump_func_expr),
+	[SM_CALL_EXPR] = CAST(dump_call_expr)
 };
 
 char* sm_ast_dump (SmExpr* expr) {

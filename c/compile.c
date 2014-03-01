@@ -89,26 +89,30 @@ static int scope_lookup (SmScope* scope, const char* name, int* level) {
 	return -1;
 }
 
-static void begin_thunk_func (SmCompile* comp, int thunkid) {
+static void begin_thunk_func (SmCompile* comp, int thunkid, int docache) {
 	GET_CODE;
 
 	PUSH_NEW_BLOCK;
 	BEGIN_FUNC("%%tagged", "thunk_%d_eval", "%%thunk*", thunkid);
 	int thunk = sm_code_get_temp (code); // first param
 	LABEL("entry");
-	// next call will point to the cache
-	int funcptr = GETPTR("%%thunk* %%%d", "i32 0, i32 %d", thunk, THUNK_FUNC);
-	STORE("%%thunkfunc " FUNC ("thunk_cache"), "%%thunkfunc* %%%d", funcptr);
+	if (docache) {
+		// next call will point to the cache
+		int funcptr = GETPTR("%%thunk* %%%d", "i32 0, i32 %d", thunk, THUNK_FUNC);
+		STORE("%%thunkfunc " FUNC ("thunk_cache"), "%%thunkfunc* %%%d", funcptr);
+	}
 }
 
-static void thunk_return (SmCompile* comp, int result) {
+static void thunk_return (SmCompile* comp, int result, int docache) {
 	GET_CODE;
 	int thunk = 0; // first param
 	
 	// cache object
-	int objptr = GETPTR("%%thunk* %%%d", "i32 0, i32 %d", thunk, THUNK_CACHE);
-	STORE("%%tagged %%%d", "%%tagged* %%%d", result, objptr);
-	RET("%%tagged %%%d", result);
+	if (docache) {
+		int objptr = GETPTR("%%thunk* %%%d", "i32 0, i32 %d", thunk, THUNK_CACHE);
+		STORE("%%tagged %%%d", "%%tagged* %%%d", result, objptr);
+		RET("%%tagged %%%d", result);
+	}
 }
 
 static void end_thunk_func (SmCompile* comp) {
@@ -130,7 +134,7 @@ static int eval_thunk (SmCompile* comp, int thunk) {
 
 static int create_thunk (SmCompile* comp, int thunkid, int notseq) {
 	GET_CODE;
-	int alloc = CALL("i8* @malloc(i32 %lu)", sizeof(void*)*THUNK_SCOPES+sizeof(void*)*(comp->scope->level+1));
+	int alloc = CALL("i8* @aligned_alloc(i32 8, i32 %lu)", sizeof(void*)*THUNK_SCOPES+sizeof(void*)*(comp->scope->level+1));
 	int thunk = BITCAST("i8* %%%d", "%%thunk*", alloc);
 
 	int funcptr = GETPTR("%%thunk* %%%d", "i32 0, i32 %d", thunk, THUNK_FUNC);
@@ -148,7 +152,7 @@ static int create_thunk (SmCompile* comp, int thunkid, int notseq) {
 	return thunk;
 }
 
-static int begin_use_string (SmCompile* comp, SmVar var) {
+static int begin_try_string (SmCompile* comp, SmVar var) {
 	GET_CODE;
 	SmExc* exc = g_new (SmExc, 1);
 	exc->var = var;
@@ -167,18 +171,19 @@ static int begin_use_string (SmCompile* comp, SmVar var) {
 			return object;
 		}
 	} else {
-		int tag = EMIT("and i64 %%%d, %llu", object, TAG_MASK);
+		int tag = EMIT("and %%tagged %%%d, %llu", object, TAG_MASK);
 		int isstr = sm_code_get_label (code);
 		exc->faillabel = sm_code_get_label (code);
-		SWITCH("i64 %%%d", "label %%fail%d", "i64 %llu, label %%isstr%d", tag, exc->faillabel, TAG_STR, isstr);
+		SWITCH("%%tagged %%%d", "label %%fail%d", "i64 %llu, label %%isstr%d", tag, exc->faillabel, TAG_STR, isstr);
 		LABEL("isstr%d", isstr);
-		object = EMIT("and i64 %%%d, %llu", object, OBJ_MASK);
-		object = TOPTR("i64 %%%d", "i8*", object);
+		object = EMIT("and %%tagged %%%d, %llu", object, OBJ_MASK);
+		object = EMIT("shl nuw %%tagged %%%d, 3", object);
+		object = TOPTR("%%tagged %%%d", "i8*", object);
 		return object;
 	}
 }
 
-static void end_use_string (SmCompile* comp) {
+static void end_try_string (SmCompile* comp) {
 	GET_CODE;
 	SmExc* exc = g_queue_pop_tail (comp->exc_stack);
 
@@ -193,8 +198,7 @@ static void end_use_string (SmCompile* comp) {
 	if (consttmp < 0) {
 		PUSH_BLOCK(comp->decls);
 		consttmp = sm_code_get_temp (code);
-		// FIXME:
-		EMIT_ ("@.const%d = private constant [%d x i8] c\"%s\\00\"", consttmp, len, str);
+		EMIT_ ("@.const%d = private constant [%d x i8] c\"%s\\00\", align 8", consttmp, len, str);
 		POP_BLOCK;
 	}
 	
@@ -205,6 +209,7 @@ static void end_use_string (SmCompile* comp) {
 	int strptr = BITCAST("[%d x i8]* @.const%d", "i8*", len, consttmp);
 	CALL ("i32 (i8*, ...)* @printf(i8* %%%d)", strptr);
 	if (!comp->scope) {
+		// we're in main
 		RET("void");
 	} else {
 		// FIXME:
@@ -240,6 +245,8 @@ DEFUNC(compile_member_expr, SmMemberExpr) {
 
 DEFUNC(compile_seq_expr, SmSeqExpr) {
 	GET_CODE;
+
+	SmFuncExpr* func = (expr->base.parent && expr->base.parent->type == SM_FUNC_EXPR) ? (SmFuncExpr*) expr->base.parent : NULL;
 	
 	SmScope* scope = (SmScope*) calloc(1, sizeof (SmScope));
 	if (comp->scope) {
@@ -251,6 +258,20 @@ DEFUNC(compile_seq_expr, SmSeqExpr) {
 
 	/* compute scope size */
 	int varid = 0;
+	if (func) {
+		for (int i=0; i < func->params->len; i++) {
+			const char* name = (const char*) func->params->pdata[i];
+
+			int existing = scope_lookup (scope, name, NULL);
+			if (existing >= 0) {
+				printf("shadowing %s\n", name);
+				exit(0);
+			}
+
+			g_hash_table_insert (scope->map, (gpointer)name, GINT_TO_POINTER(varid++));
+		}
+	}
+	
 	for (int i=0; i < expr->assigns->len; i++) {
 		SmAssignExpr* assign = (SmAssignExpr*) expr->assigns->pdata[i];
 		GPtrArray* names = assign->names;
@@ -269,9 +290,9 @@ DEFUNC(compile_seq_expr, SmSeqExpr) {
 
 	int thunkid = comp->next_thunkid++;
 
-	begin_thunk_func (comp, thunkid);
+	begin_thunk_func (comp, thunkid, !func);
 	int allocsize = varid*sizeof(void*);
-	int alloc = CALL("i8* @malloc(i32 %d)", allocsize);
+	int alloc = CALL("i8* @aligned_alloc(i32 8, i32 %d)", allocsize);
 	int scopeid = BITCAST("i8* %%%d", "%%thunk**", alloc);
 	// set to the current thunk, 0 = first param
 	int scopeptr = GETPTR("%%thunk* %%0", "i32 0, i32 %d, i32 %d", THUNK_SCOPES, scope->level);
@@ -304,16 +325,30 @@ DEFUNC(compile_seq_expr, SmSeqExpr) {
 	if (result.isthunk) {
 		object = eval_thunk (comp, result.id);
 	}
-	thunk_return (comp, object);
+	thunk_return (comp, object, !func);
 	end_thunk_func (comp);
 
-	int thunk = create_thunk (comp, thunkid, 0);
+	int thunk = create_thunk (comp, thunkid, FALSE);
 
 	comp->scope = scope->parent;
 	g_hash_table_unref (scope->map);
 	free (scope);
 
-	RETVAL(id=thunk, isthunk=TRUE, type=result.type);
+	if (!func) {
+		RETVAL(id=thunk, isthunk=TRUE, type=result.type);
+	} else {
+		// closure object
+		int closure = TOINT("%%thunk* %%%d", "%%tagged", thunk);
+		closure = EMIT("lshr exact i64 %%%d, 3", closure);
+		closure = EMIT("or i64 %%%d, %llu", closure, TAG_FUN);
+		RETVAL(id=closure, isthunk=FALSE, type=TYPE_FUN);
+	}
+}
+
+DEFUNC(compile_func_expr, SmFuncExpr) {
+	// seq
+	SmVar result = VISIT(expr->body);
+	return result;
 }
 
 DEFUNC(compile_literal, SmLiteral) {
@@ -324,16 +359,17 @@ DEFUNC(compile_literal, SmLiteral) {
 		int consttmp = sm_code_get_temp (code);
 		int len = strlen(expr->str)+1;
 		// FIXME:
-		EMIT_ ("@.const%d = private constant [%d x i8] c\"%s\\00\"", consttmp, len, expr->str);
+		EMIT_ ("@.const%d = private constant [%d x i8] c\"%s\\00\", align 8", consttmp, len, expr->str);
 		POP_BLOCK;
 
 		int thunkid = comp->next_thunkid++;
 		// expression code
-		begin_thunk_func (comp, thunkid);
-		int ptr = GETPTR("[%d x i8]* @.const%d", "i32 0, i32 0", len, consttmp);
-		int obj = EMIT ("ptrtoint i8* %%%d to %%tagged", ptr);
-		int tagged = EMIT ("or %%tagged %%%d, %llu", obj, TAG_INT);
-		thunk_return (comp, tagged);
+		begin_thunk_func (comp, thunkid, TRUE);
+		int obj = GETPTR("[%d x i8]* @.const%d", "i32 0, i32 0", len, consttmp);
+		obj = EMIT ("ptrtoint i8* %%%d to %%tagged", obj);
+		obj = EMIT ("lshr exact %%tagged %%%d, 3", obj);
+		obj = EMIT ("or %%tagged %%%d, %llu", obj, TAG_STR);
+		thunk_return (comp, obj, TRUE);
 		end_thunk_func (comp);
 
 		// build thunk
@@ -349,7 +385,7 @@ SmVar (*compile_table[])(SmCompile*, SmExpr*) = {
 	[SM_MEMBER_EXPR] = CAST(compile_member_expr),
 	[SM_SEQ_EXPR] = CAST(compile_seq_expr),
 	[SM_LITERAL] = CAST(compile_literal),
-	/* [SM_FUNC_EXPR] = CAST(compile_func) */
+	[SM_FUNC_EXPR] = CAST(compile_func_expr)
 };
 
 static SmVar call_compile_table (SmCompile* comp, SmExpr* expr) {
@@ -372,7 +408,7 @@ SmJit* sm_compile (const char* name, SmExpr* expr) {
 	
 	PUSH_BLOCK(comp->decls);
 	DECLARE ("i32 @printf(i8*, ...)");
-	DECLARE ("i8* @malloc(i32)");
+	DECLARE ("i8* @aligned_alloc(i32, i32)");
 	DECLARE ("void @llvm.memcpy.p0i8.p0i8.i32(i8*, i8*, i32, i32, i1)");
 	DECLARE ("void @llvm.donothing() nounwind readnone");
 	EMIT_ ("%%tagged = type i64");
@@ -396,14 +432,14 @@ SmJit* sm_compile (const char* name, SmExpr* expr) {
 	SmVar exprvar = VISIT(expr);
 
 	// first call
-	int strptr = begin_use_string (comp, exprvar);
+	int strptr = begin_try_string (comp, exprvar);
 	CALL ("i32 (i8*, ...)* @printf(i8* %%%d)", strptr);
-	end_use_string (comp);
+	end_try_string (comp);
 
 	// second call
-	strptr = begin_use_string (comp, exprvar);
+	strptr = begin_try_string (comp, exprvar);
 	CALL ("i32 (i8*, ...)* @printf(i8* %%%d)", strptr);
-	end_use_string (comp);
+	end_try_string (comp);
 
 	RET("void");
 	END_FUNC;

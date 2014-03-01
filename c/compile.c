@@ -89,30 +89,43 @@ static int scope_lookup (SmScope* scope, const char* name, int* level) {
 	return -1;
 }
 
-static void begin_thunk_func (SmCompile* comp, int thunkid, int docache) {
+static void begin_thunk_func (SmCompile* comp, int thunkid, int nparams) {
 	GET_CODE;
 
 	PUSH_NEW_BLOCK;
-	BEGIN_FUNC("%%tagged", "thunk_%d_eval", "%%thunk*", thunkid);
+	char* params = NULL;
+	for (int i=0; i < nparams; i++) {
+		char* old = params;
+		params = g_strconcat (", %thunk*", params, NULL);
+		free (old);
+	}
+	
+	BEGIN_FUNC("%%tagged", "thunk_%d_eval", "%%thunk*%s", thunkid, params ? params : "");
 	int thunk = sm_code_get_temp (code); // first param
 	LABEL("entry");
-	if (docache) {
+	if (!nparams) {
 		// next call will point to the cache
 		int funcptr = GETPTR("%%thunk* %%%d", "i32 0, i32 %d", thunk, THUNK_FUNC);
 		STORE("%%thunkfunc " FUNC ("thunk_cache"), "%%thunkfunc* %%%d", funcptr);
+	} else {
+		// reserve for parameters
+		for (int i=0; i < nparams; i++) {
+			sm_code_get_temp (code);
+		}
 	}
 }
 
 static void thunk_return (SmCompile* comp, int result, int docache) {
 	GET_CODE;
-	int thunk = 0; // first param
 	
 	// cache object
 	if (docache) {
+		int thunk = 0; // first param
 		int objptr = GETPTR("%%thunk* %%%d", "i32 0, i32 %d", thunk, THUNK_CACHE);
 		STORE("%%tagged %%%d", "%%tagged* %%%d", result, objptr);
-		RET("%%tagged %%%d", result);
 	}
+	
+	RET("%%tagged %%%d", result);
 }
 
 static void end_thunk_func (SmCompile* comp) {
@@ -290,7 +303,8 @@ DEFUNC(compile_seq_expr, SmSeqExpr) {
 
 	int thunkid = comp->next_thunkid++;
 
-	begin_thunk_func (comp, thunkid, !func);
+	begin_thunk_func (comp, thunkid, func ? func->params->len : 0);
+
 	int allocsize = varid*sizeof(void*);
 	int alloc = CALL("i8* @aligned_alloc(i32 8, i32 %d)", allocsize);
 	int scopeid = BITCAST("i8* %%%d", "%%thunk**", alloc);
@@ -298,6 +312,14 @@ DEFUNC(compile_seq_expr, SmSeqExpr) {
 	int scopeptr = GETPTR("%%thunk* %%0", "i32 0, i32 %d, i32 %d", THUNK_SCOPES, scope->level);
 	STORE("%%thunk** %%%d", "%%thunk*** %%%d", scopeid, scopeptr);
 
+	if (func) {
+		/* assign parameters to scope */
+		for (int i=0; i < func->params->len; i++) {
+			int addr = GETPTR("%%thunk** %%%d", "i32 %d", scopeid, varid);
+			STORE("%%thunk* %%%d", "%%thunk** %%%d", i+1, addr); // parameter i+1, because param 0 is the closure itself
+		}
+	}
+	
 	/* assign values to scope */
 	for (int i=0; i < expr->assigns->len; i++) {
 		SmAssignExpr* assign = (SmAssignExpr*) expr->assigns->pdata[i];
@@ -364,7 +386,7 @@ DEFUNC(compile_literal, SmLiteral) {
 
 		int thunkid = comp->next_thunkid++;
 		// expression code
-		begin_thunk_func (comp, thunkid, TRUE);
+		begin_thunk_func (comp, thunkid, 0);
 		int obj = GETPTR("[%d x i8]* @.const%d", "i32 0, i32 0", len, consttmp);
 		obj = EMIT ("ptrtoint i8* %%%d to %%tagged", obj);
 		obj = EMIT ("lshr exact %%tagged %%%d, 3", obj);

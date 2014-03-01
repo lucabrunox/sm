@@ -9,6 +9,7 @@
 struct _SmCodeBlock {
 	int allocsize;
 	int varcount;
+	int labelcount;
 	
 	int len;
 	char* buf;
@@ -45,6 +46,10 @@ void sm_code_emitv (SmCode* code, const char* fmt, va_list ap) {
 
 int sm_code_get_temp (SmCode* code) {
 	return code->current->varcount++;
+}
+
+int sm_code_get_label (SmCode* code) {
+	return code->current->labelcount++;
 }
 
 int sm_code_emit_temp (SmCode* code, const char* fmt, ...) {

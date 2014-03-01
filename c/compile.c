@@ -242,7 +242,7 @@ DEFUNC(compile_literal, SmLiteral) {
 		PUSH_BLOCK(comp->decls);
 		int consttmp = sm_code_get_temp (code);
 		int len = strlen(expr->str)+1;
-		// FIXME: escape
+		// FIXME:
 		EMIT_ ("@.const%d = private constant [%d x i8] c\"%s\\00\"", consttmp, len, expr->str);
 		POP_BLOCK;
 

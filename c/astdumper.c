@@ -2,6 +2,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdarg.h>
+#include <glib.h>
 
 #include "ast.h"
 #include "astdumper.h"
@@ -30,7 +31,7 @@ static char* dump_literal (SmLiteral* expr) {
 	char* res = NULL;
 	if (expr->str) {
 		// TODO: quote
-		asprintf(&res, "'%s'", expr->str);
+		asprintf(&res, "\"%s\"", expr->str);
 	} else {
 		asprintf(&res, "%g", expr->num);
 	}

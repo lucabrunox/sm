@@ -111,11 +111,15 @@ SmToken sm_lexer_next (SmLexer* lexer) {
 		while (PEEK != q) {
 			if (PEEK == '\\') {
 				READ;
-				if ((q == '\'' || q == '"') && PEEK == 'n') {
+				// canonicalize to "..."
+				if (PEEK == '\'') {
 					char* old = str;
-					asprintf(&str, "%s\n", str ? str : "", READ);
+					asprintf(&str, "%s'", str ? str : "");
 					free(old);
-					continue;
+				} else {
+					char* old = str;
+					asprintf(&str, "%s\\", str ? str : "");
+					free(old);
 				}
 			}
 			if (!PEEK) {
@@ -128,7 +132,10 @@ SmToken sm_lexer_next (SmLexer* lexer) {
 		}
 		READ;
 		SmToken t = { .start=start, .type="str" };
-		t.str = str;
+		char* compressed = g_strcompress (str);
+		free (str);
+		t.str = g_strescape (compressed, NULL);
+		free (compressed);
 		return t;
 	}
 	

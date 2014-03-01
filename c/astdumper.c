@@ -63,6 +63,30 @@ static char* dump_assign_expr (SmAssignExpr* expr) {
 	return res;
 }
 
+static char* dump_func_expr (SmFuncExpr* expr) {
+	char* res = strdup("");
+	char* old;
+
+	GPtrArray* params = expr->params;
+	for (int i=0; i < params->len; i++) {
+		const char* param = (const char*) params->pdata[i];
+		old = res;
+		if (i==0) {
+			res = strdup (param);
+		} else {
+			res = str("%s %s", res, param);
+		}
+		free (old);
+	}
+
+	old = res;
+	char* inner = sm_ast_dump (expr->body);
+	res = str("%s: %s", res, inner);
+	free (old);
+	free (inner);
+	return res;
+}
+
 static char* dump_seq_expr (SmSeqExpr* expr) {
 	char* res = strdup("(");
 	char* old;
@@ -89,7 +113,8 @@ char* (*dump_table[])(SmExpr*) = {
 	[SM_MEMBER_EXPR] = CAST(dump_member_expr),
 	[SM_SEQ_EXPR] = CAST(dump_seq_expr),
 	[SM_ASSIGN_EXPR] = CAST(dump_assign_expr),
-	[SM_LITERAL] = CAST(dump_literal)
+	[SM_LITERAL] = CAST(dump_literal),
+	[SM_FUNC_EXPR] = CAST(dump_func_expr)
 };
 
 char* sm_ast_dump (SmExpr* expr) {

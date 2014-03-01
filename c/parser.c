@@ -26,7 +26,7 @@ void sm_parser_free (SmParser* parser) {
 #define NEXT (sm_token_destroy(&parser->cur), parser->cur = sm_lexer_next(&parser->lexer))
 #define PTOK puts(parser->cur.type)
 #define FUNC(n) static SmExpr* n (SmParser* parser)
-#define FUNC2(n) static SmExpr* n (SmParser* parser, SmExpr* inner)
+#define FUNC2(n,x) static SmExpr* n (SmParser* parser, x)
 #define TYPE (parser->cur.type)
 #define EXPECT(x) if (!CASE(x)) { printf("expected " x ", got %s\n", TYPE); return NULL; }
 #define ACCEPT(x) ((CASE(x)) ? (NEXT, 1) : 0)
@@ -49,7 +49,7 @@ static char* identifier (SmParser* parser) {
 
 FUNC(seq);
 
-FUNC2(member) {
+FUNC2(member, SmExpr* inner) {
 	char* id = identifier(parser);
 	CHECK(id);
 
@@ -82,6 +82,34 @@ FUNC(primary) {
 	return expr;
 }
 
+FUNC2(function, int allow_seq) {
+	SmParser begin = SAVE;
+	if (CASE("id")) {
+		GPtrArray* params = g_ptr_array_new_with_free_func ((GDestroyNotify) g_free);
+		while (CASE("id")) {
+			g_ptr_array_add (params, identifier(parser));
+			if (ACCEPT(":")) {
+				SmExpr* body;
+				if (allow_seq) {
+					body = seq(parser);
+				} else {
+					body = primary(parser);
+				}
+				
+				NEW(expr, SmFuncExpr, SM_FUNC_EXPR);
+				expr->params = params;
+				expr->body = body;
+				return EXPR(expr);
+			} else {
+				g_ptr_array_unref (params);
+				RESTORE(begin);
+			}
+		}
+	}
+
+	return primary(parser);
+}
+
 FUNC(assign) {
 	SmParser begin = SAVE;
 
@@ -99,7 +127,7 @@ FUNC(assign) {
 		}
 
 		if (ACCEPT ("=")) {
-			SmExpr* expr = primary(parser);
+			SmExpr* expr = function(parser, TRUE);
 			CHECK(expr);
 			NEW(a, SmAssignExpr, SM_ASSIGN_EXPR);
 			a->names = names;

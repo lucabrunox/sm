@@ -214,18 +214,12 @@ static long long unsigned int tagmap[] = {
 	[TYPE_NIL] = 0
 };
 		
-static int begin_try_var (SmCompile* comp, SmVar var, SmVarType type) {
+static int try_var (SmCompile* comp, SmVar var, SmVarType type) {
 	GET_CODE;
-	SmExc* exc = g_new (SmExc, 1);
-	exc->var = var;
-	exc->type = type;
-	g_queue_push_tail (comp->exc_stack, exc);
-	
 	int object = var.id;
 	if (var.isthunk) {
 		object = eval_thunk (comp, object);
 	}
-	exc->object = object;
 	
 	if (var.type != TYPE_UNK) {
 		if (var.type != type) {
@@ -235,12 +229,34 @@ static int begin_try_var (SmCompile* comp, SmVar var, SmVarType type) {
 			return object;
 		}
 	} else {
-		COMMENT ("begin_try %d", type);
+		COMMENT ("try type %d", type);
 
 		int tag = EMIT("and %%tagged %%%d, %llu", object, TAG_MASK);
+		int faillabel = sm_code_get_label (code);
 		int ok = sm_code_get_label (code);
-		exc->faillabel = sm_code_get_label (code);
-		SWITCH("%%tagged %%%d", "label %%fail%d", "i64 %llu, label %%ok%d", tag, exc->faillabel, tagmap[type], ok);
+		SWITCH("%%tagged %%%d", "label %%fail%d", "i64 %llu, label %%ok%d", tag, faillabel, tagmap[type], ok);
+
+		static int consttmp = -1;
+		static const char* str = "runtime expected %llu, got %llu\n";
+		int len = strlen(str)+1;
+		if (consttmp < 0) {
+			PUSH_BLOCK(comp->decls);
+			consttmp = sm_code_get_temp (code);
+			EMIT_ ("@.const%d = private constant [%d x i8] c\"%s\\00\", align 8", consttmp, len, str);
+			POP_BLOCK;
+		}
+		
+		LABEL("fail%d", faillabel);
+		int strptr = BITCAST("[%d x i8]* @.const%d", "i8*", len, consttmp);
+		CALL ("i32 (i8*, ...)* @printf(i8* %%%d, i64 %llu, i64 %%%d)", strptr, tagmap[type], tag);
+		if (!comp->scope) {
+			// we're in main
+			RET("void");
+		} else {
+		// FIXME: throw meaningful exception
+			RET("i64 0");
+		}
+
 		LABEL("ok%d", ok);
 		object = EMIT("and %%tagged %%%d, %llu", object, OBJ_MASK);
 		object = EMIT("shl nuw %%tagged %%%d, 3", object);
@@ -253,48 +269,6 @@ static int begin_try_var (SmCompile* comp, SmVar var, SmVarType type) {
 		}
 		return object;
 	}
-}
-
-static void end_try_var (SmCompile* comp) {
-	GET_CODE;
-	SmExc* exc = g_queue_pop_tail (comp->exc_stack);
-
-	if (exc->var.type != TYPE_UNK) {
-		// handled at compile time
-		g_free (exc);
-		return;
-	}
-
-	static int consttmp = -1;
-	
-	static const char* str = "runtime expected %llu, got %llu\n";
-	int len = strlen(str)+1;
-	if (consttmp < 0) {
-		PUSH_BLOCK(comp->decls);
-		consttmp = sm_code_get_temp (code);
-		EMIT_ ("@.const%d = private constant [%d x i8] c\"%s\\00\", align 8", consttmp, len, str);
-		POP_BLOCK;
-	}
-
-	COMMENT ("end_try %d", exc->type);
-	int endstr = sm_code_get_label (code);
-	BR("label %%end%d", endstr);
-	
-	LABEL("fail%d", exc->faillabel);
-	int strptr = BITCAST("[%d x i8]* @.const%d", "i8*", len, consttmp);
-	int tag = EMIT("and %%tagged %%%d, %llu", exc->object, TAG_MASK);
-	CALL ("i32 (i8*, ...)* @printf(i8* %%%d, i64 %llu, i64 %%%d)", strptr, tagmap[exc->type], tag);
-	if (!comp->scope) {
-		// we're in main
-		RET("void");
-	} else {
-		// FIXME:
-		RET("i64 0");
-	}
-
-	LABEL("end%d", endstr);
-
-	free(exc);
 }
 
 DEFUNC(compile_member_expr, SmMemberExpr) {
@@ -497,8 +471,7 @@ DEFUNC(compile_call_expr, SmCallExpr) {
 	
 	COMMENT("eval the function");
 	SmVar closurevar = VISIT(expr->func);
-	int closure = begin_try_var (comp, closurevar, TYPE_FUN);
-	end_try_var (comp);
+	int closure = try_var (comp, closurevar, TYPE_FUN);
 
 	int funcptr = GETPTR("%%closure* %%%d", "i32 0, i32 %d", closure, CLOSURE_FUNC);
 	int func = LOAD("%%closurefunc* %%%d", funcptr);
@@ -582,9 +555,8 @@ SmJit* sm_compile (const char* name, SmExpr* expr) {
 	SmVar exprvar = VISIT(expr);
 
 	// first call
-	int strptr = begin_try_var (comp, exprvar, TYPE_STR);
+	int strptr = try_var (comp, exprvar, TYPE_STR);
 	CALL ("i32 (i8*, ...)* @printf(i8* %%%d)", strptr);
-	end_try_var (comp);
 
 	// second call
 	/* strptr = begin_try_var (comp, exprvar, TYPE_STR); */

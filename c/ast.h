@@ -10,7 +10,8 @@ typedef enum {
 	SM_SEQ_EXPR,
 	SM_ASSIGN_EXPR,
 	SM_LITERAL,
-	SM_FUNC_EXPR
+	SM_FUNC_EXPR,
+	SM_CALL_EXPR
 } SmExprType;
 
 typedef struct _SmExpr SmExpr;
@@ -45,6 +46,12 @@ typedef struct {
 	GPtrArray* params;
 	SmExpr* body;
 } SmFuncExpr;
+
+typedef struct {
+	SmExpr base;
+	SmExpr* func;
+	GPtrArray* args;
+} SmCallExpr;
 
 typedef struct {
 	SmExpr base;

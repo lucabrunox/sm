@@ -38,6 +38,7 @@ void sm_parser_free (SmParser* parser) {
 #define RESTORE(x) parser->lexer=x.cur.start; NEXT
 #define CHECK(x) if (!x) return NULL
 #define CASE(x) (!strcmp(TYPE, x))
+#define CASESTR(x) (!strcmp(STR, x))
 
 static char* identifier (SmParser* parser) {
 	EXPECT("id");
@@ -85,6 +86,32 @@ FUNC(primary) {
 	return expr;
 }
 
+FUNC(call) {
+	SmExpr* expr = primary(parser);
+
+	GPtrArray* args = g_ptr_array_new ();
+	NEW(call, SmCallExpr, SM_CALL_EXPR);
+	while (TRUE) {
+		if (CASE("eof") || CASE(";") || CASE(")") || CASE(",") || CASE("]") || CASE("|") ||
+			(CASE("id") && (CASESTR("if") || CASESTR("then") || CASESTR("else") || CASESTR("and") || CASESTR("or")))) {
+			break;
+		}
+		SmExpr* arg = primary(parser);
+		CHECK(arg);
+		g_ptr_array_add (args, arg);
+		arg->parent = EXPR(call);
+	}
+	
+	if (!args->len) {
+		g_ptr_array_unref (args);
+		return expr;
+	} else {
+		call->func = expr;
+		expr->parent = EXPR(call);
+		return EXPR(call);
+	}
+}
+
 FUNC2(function, int allow_seq) {
 	SmParser begin = SAVE;
 	if (CASE("id")) {
@@ -96,7 +123,7 @@ FUNC2(function, int allow_seq) {
 				if (allow_seq) {
 					body = seq(parser);
 				} else {
-					body = primary(parser);
+					body = call(parser);
 				}
 				CHECK(body);
 				if (body->type != SM_SEQ_EXPR) {
@@ -120,7 +147,7 @@ FUNC2(function, int allow_seq) {
 		}
 	}
 
-	return primary(parser);
+	return call(parser);
 }
 
 FUNC(assign) {
@@ -156,7 +183,7 @@ FUNC(assign) {
 		RESTORE(begin);
 	}
 
-	return primary(parser);
+	return call(parser);
 }
 
 FUNC(seq) {

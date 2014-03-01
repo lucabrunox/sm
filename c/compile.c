@@ -19,9 +19,8 @@
 #define PUSH_NEW_BLOCK PUSH_BLOCK(sm_code_new_block (code))
 
 #define THUNK_FUNC 0
-#define THUNK_JUMP 1
-#define THUNK_CACHE 2
-#define THUNK_SCOPES 3
+#define THUNK_CACHE 1
+#define THUNK_SCOPES 2
 
 typedef struct {
 	int id;
@@ -63,35 +62,38 @@ static int scope_lookup (SmScope* scope, const char* name, int* level) {
 
 static void begin_thunk_func (SmCompile* comp, int thunkid) {
 	GET_CODE;
-	PUSH_BLOCK(comp->decls);
-	EMIT_ ("@thunklabel_%d = internal global [2 x i8*] [i8* blockaddress(" FUNC("thunk_%d") ", %%eval), i8* blockaddress(" FUNC("thunk_%d") ", %%cache)]",
-		   thunkid, thunkid, thunkid);
-	POP_BLOCK;
 
 	PUSH_NEW_BLOCK;
-	BEGIN_FUNC("%%object", "thunk_%d", "%%thunk*", thunkid);
+	BEGIN_FUNC("%%object", "thunk_%d_cache", "%%thunk*", thunkid);
 	int thunk = sm_code_get_temp (code); // first param
 	LABEL("entry");
-	int jmpptr = GETPTR("%%thunk* %%%d", "i32 0, i32 %d", thunk, THUNK_JUMP);
-	int jmp = LOAD("i64* %%%d", jmpptr);
-	int labelptr = GETPTR("[2 x i8*]* @thunklabel_%d", "i32 0, i64 %%%d", thunkid, jmp);
-	int label = LOAD("i8** %%%d", labelptr);
-	EMIT_("indirectbr i8* %%%d, [label %%eval, label %%cache]", label);
-
-	LABEL("eval");
-	// next jump will point to the cache
-	STORE("i64 1", "i64* %%%d", jmpptr);
-}
-
-static void end_thunk_func (SmCompile* comp, int result) {
-	GET_CODE;
-	int thunk = 0; // first param
-	
-	LABEL("cache");
 	int objptr = GETPTR("%%thunk* %%%d", "i32 0, i32 %d", thunk, THUNK_CACHE);
 	int obj = LOAD("%%object* %%%d", objptr);
 	RET("%%object %%%d", obj);
+	END_FUNC;
+	POP_BLOCK;
 	
+	PUSH_NEW_BLOCK;
+	BEGIN_FUNC("%%object", "thunk_%d_eval", "%%thunk*", thunkid);
+	sm_code_get_temp (code); // first param
+	LABEL("entry");
+	// next call will point to the cache
+	int funcptr = GETPTR("%%thunk* %%%d", "i32 0, i32 %d", thunk, THUNK_FUNC);
+	STORE("%%thunkfunc " FUNC ("thunk_%d_cache"), "%%thunkfunc* %%%d", thunkid, funcptr);
+}
+
+static void thunk_return (SmCompile* comp, int result) {
+	GET_CODE;
+	int thunk = 0; // first param
+	
+	// cache object
+	int objptr = GETPTR("%%thunk* %%%d", "i32 0, i32 %d", thunk, THUNK_CACHE);
+	STORE("%%object %%%d", "%%object* %%%d", result, objptr);
+	RET("%%object %%%d", result);
+}
+
+static void end_thunk_func (SmCompile* comp) {
+	GET_CODE;
 	END_FUNC;
 	POP_BLOCK;
 }
@@ -103,9 +105,6 @@ static int eval_thunk (SmCompile* comp, int thunk) {
 
 	// eval thunk
 	int object = CALL("%%object %%%d(%%thunk* %%%d)", func, thunk);
-	// cache evaluation
-	int objptr = GETPTR("%%thunk* %%%d", "i32 0, i32 %d", thunk, THUNK_CACHE);
-	STORE("%%object %%%d", "%%object* %%%d", object, objptr);
 
 	return object;
 }
@@ -116,10 +115,7 @@ static int create_thunk (SmCompile* comp, int thunkid, int notseq) {
 	int thunk = BITCAST("i8* %%%d", "%%thunk*", alloc);
 
 	int funcptr = GETPTR("%%thunk* %%%d", "i32 0, i32 %d", thunk, THUNK_FUNC);
-	STORE("%%thunkfunc " FUNC("thunk_%d"), "%%thunkfunc* %%%d", thunkid, funcptr);
-
-	int jmpptr = GETPTR("%%thunk* %%%d", "i32 0, i32 %d", thunk, THUNK_JUMP);
-	STORE("i64 0", "i64* %%%d", jmpptr);
+	STORE("%%thunkfunc " FUNC("thunk_%d_eval"), "%%thunkfunc* %%%d", thunkid, funcptr);
 
 	if (comp->scope->parent) {
 		// 0 = first param
@@ -218,8 +214,8 @@ DEFUNC(compile_seq_expr, SmSeqExpr) {
 
 	SmVarType resthunk = VISIT(expr->result);
 	int object = eval_thunk (comp, resthunk.id);
-	RET("%%object %%%d", object);
-	end_thunk_func (comp, thunkid);
+	thunk_return (comp, object);
+	end_thunk_func (comp);
 
 	int thunk = create_thunk (comp, thunkid, 0);
 
@@ -248,8 +244,8 @@ DEFUNC(compile_literal, SmLiteral) {
 		int obj = EMIT ("ptrtoint i8* %%%d to %%object", ptr);
 		/* int tagged = EMIT ("or i64 %%%d, 2", num); */
 		int tagged = obj;
-		RET("%%object %%%d", tagged);
-		end_thunk_func (comp, tagged);
+		thunk_return (comp, tagged);
+		end_thunk_func (comp);
 
 		// build thunk
 		int thunk = create_thunk (comp, thunkid, 1);
@@ -289,7 +285,7 @@ SmJit* sm_compile (const char* name, SmExpr* expr) {
 	DECLARE ("void @llvm.memcpy.p0i8.p0i8.i32(i8*, i8*, i32, i32, i1)");
 	EMIT_ ("%%object = type i64");
 	EMIT_ ("%%thunkfunc = type %%object (%%thunk*)*");
-	DEFINE_STRUCT ("thunk", "%%thunkfunc, i64, %%object, [0 x %%thunk**]"); // func, jump label index, cached object, scope
+	DEFINE_STRUCT ("thunk", "%%thunkfunc, %%object, [0 x %%thunk**]"); // func, cached object, scope
 	POP_BLOCK;
 
 	PUSH_NEW_BLOCK;

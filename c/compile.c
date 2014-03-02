@@ -117,7 +117,9 @@ static int sp_fin (SmCompile* comp, int sp, int x, int v, const char* cast) {
 	}
 	sp = GETPTR("i64* %%%d, i32 %d", sp, x)
 	STORE("i64 %%%d", "i64* %%%d", v, sp);
-	STORE("i64* %%%d", "i64** @sp", sp);
+	if (x) {
+		STORE("i64* %%%d", "i64** @sp", sp);
+	}
 	return sp;
 }
 
@@ -384,7 +386,7 @@ DEFUNC(compile_seq_expr, SmSeqExpr) {
 	scope->nparams = nparams;
 	
 	int closureid = comp->next_closureid++;
-	int closure = begin_closure_func (comp, closureid);
+	begin_closure_func (comp, closureid);
 	int old_use_temps = comp->use_temps;
 	comp->use_temps = TRUE;
 	COMMENT("seq/func closure");
@@ -450,7 +452,7 @@ DEFUNC(compile_seq_expr, SmSeqExpr) {
 
 	COMMENT("create seq closure");
 	COMMENT("ast: %s", g_strescape (sm_ast_dump(EXPR(expr)), NULL));
-	closure = create_closure (comp, closureid);
+	int closure = create_closure (comp, closureid);
 
 	if (!func) {
 		RETVAL(id=closure, isthunk=TRUE, type=result.type);
@@ -568,21 +570,45 @@ static int create_nop_closure (SmCompile* comp) {
 
 static int create_print_closure (SmCompile* comp) {
 	GET_CODE;
-	int printid = comp->next_closureid++;
-	begin_closure_func (comp, printid);
-	COMMENT("print func");
+	int directid = comp->next_closureid++;
+	begin_closure_func (comp, directid);
+	COMMENT("real print func");
+	int old_use_temps = comp->use_temps;
 	int sp = LOADSP;
+	COMMENT("get string");
 	int str = SPGET(sp, 0, NULL);
+	COMMENT("get continuation");
 	int cont = SPGET(sp, 1, "%closure*");
 	
 	SmVar var = { .id=str, .isthunk=FALSE, .type=TYPE_UNK };
 	str = try_var (comp, var, TYPE_STR);
 	CALL ("i32 (i8*, ...)* @printf(i8* %%%d)", str);
-	
+
+	COMMENT("put string back in the stack");
 	SPFIN(sp, 1, str, "i8*");
 	ENTER(cont);
+	comp->use_temps = old_use_temps;
 	end_closure_func (comp);
+
+	int printid = comp->next_closureid++;
+	begin_closure_func (comp, printid);
+	old_use_temps = comp->use_temps;
+	COMMENT("print closure func");
+	COMMENT("create direct closure");
+	int direct = create_closure (comp, directid);
 	
+	sp = LOADSP;
+	COMMENT("get string thunk");
+	str = SPGET(sp, 0, "%closure*");
+	COMMENT("push direct print closure");
+	SPFIN(sp, 0, direct, "%closure*");
+
+	COMMENT("enter string");
+	ENTER(str);
+	comp->use_temps = old_use_temps;
+	end_closure_func (comp);
+
+	COMMENT("create print closure");
 	int printclo = create_thunk (comp, printid);
 	return printclo;
 }
@@ -641,13 +667,14 @@ SmJit* sm_compile (const char* name, SmExpr* expr) {
 	int printclo = create_print_closure (comp);
 	
 	SPSET(sp, 0, nopclo, "%closure*");
-	SPSET(sp, -1, printclo, "%closure*");
-	VARSP(sp, -1);
 
 	COMMENT("visit root expression");
 	SmVar var = VISIT(expr);
-	COMMENT("enter");
-	ENTER(var.id);
+	COMMENT("push root expression");
+	SPFIN(sp, -1, var.id, "%closure*");
+
+	COMMENT("enter print");
+	ENTER(printclo);
 	/* RET("void"); */
 	END_FUNC;
 	POP_BLOCK;

@@ -9,7 +9,8 @@
 #define DEFINE_STRUCT(s,fields,...) EMIT_("%%" s " = type { " fields " }", ##__VA_ARGS__)
 #define STRUCT(s) "%%struct." s
 #define FUNC(s) "@_smc_" s
-#define BEGIN_FUNC(ret,name,params,...) EMIT_("define " ret " @_smc_" name "(" params ") {", ##__VA_ARGS__)
+#define BEGIN_FUNC(ret,name,params,...) BEGIN_FUNC_ATTRS(ret,name,params,"",##__VA_ARGS__)
+#define BEGIN_FUNC_ATTRS(ret,name,params,attrs,...) EMIT_("define private " ret " @_smc_" name "(" params ") inlinehint nounwind " attrs " {", ##__VA_ARGS__)
 #define END_FUNC EMIT_("}")
 #define LABEL(x,...) EMIT_(x ":", ##__VA_ARGS__)
 #define CALL(s,...) EMIT("call " s, ##__VA_ARGS__);
@@ -22,6 +23,8 @@
 #define TOPTR(f,t,...) EMIT("inttoptr " f " to " t, ##__VA_ARGS__)
 #define TOINT(f,t,...) EMIT("ptrtoint " f " to " t, ##__VA_ARGS__)
 #define THUNK_NEW() sm_code_emit_new_thunk(code)
+#define ADD(x,y,...) EMIT_("add " x ", " y, ##__VA_ARGS__)
+#define SUB(x,y,...) EMIT_("sub " x ", " y, ##__VA_ARGS__)
 #define COMMENT(x,...) EMIT_("; " x, ##__VA_ARGS__)
 #define NOP CALL_("void @llvm.donothing()")
 #define SWITCH(v,d,t,...) EMIT_("switch " v ", " d " [ " t " ]",##__VA_ARGS__)

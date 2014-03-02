@@ -20,6 +20,11 @@
 #include <llvm/ExecutionEngine/JIT.h>
 #include <llvm/Support/raw_ostream.h>
 #include <llvm/Assembly/AssemblyAnnotationWriter.h>
+#include <llvm/Transforms/Scalar.h>
+#include <llvm/Analysis/Passes.h>
+#include <llvm/IR/DataLayout.h>
+#include <llvm/PassManager.h>
+#include <llvm/Assembly/PrintModulePass.h>
 
 #include "llvm.h"
 
@@ -45,6 +50,24 @@ SmJit* sm_jit_compile (const char* name, const char* code) {
         return NULL;
     }
 
+	PassManager pm;
+	
+	// Set up the optimizer pipeline.  Start with registering info about how the
+	// target lays out data structures.
+	/* pm.add(new DataLayout(*engine->getDataLayout())); */
+	// Provide basic AliasAnalysis support for GVN.
+	pm.add(createBasicAliasAnalysisPass());
+	// Do simple "peephole" optimizations and bit-twiddling optzns.
+	pm.add(createInstructionCombiningPass());
+	// Reassociate expressions.
+	pm.add(createReassociatePass());
+	// Eliminate Common SubExpressions.
+	pm.add(createGVNPass());
+	// Simplify the control flow graph (deleting unreachable blocks, etc).
+	pm.add(createCFGSimplificationPass());
+	
+	pm.run (*mod);
+	
 	return (SmJit*) mod;
 }
 
@@ -59,6 +82,7 @@ void* sm_jit_get_function (SmJit* jit, const char* name) {
 	}
 
 	Function *entry_point = mod->getFunction("_smc_main");
+	
 	return engine->getPointerToFunction(entry_point);
 }
 

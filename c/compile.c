@@ -291,6 +291,9 @@ DEFUNC(compile_member_expr, SmMemberExpr) {
 	int scope = LOAD("%%closure*** %%%d", scopeptr);
 	int addr = GETPTR("%%closure** %%%d", "i32 %d", scope, varid);
 	int res = LOAD("%%closure** %%%d", addr);
+	if (!strcmp(expr->name, "x")) {
+		CALL_("void @llvm.debugtrap()");
+	}
 	RETVAL(id=res, isthunk=TRUE, type=TYPE_UNK);
 }
 
@@ -533,6 +536,7 @@ SmJit* sm_compile (const char* name, SmExpr* expr) {
 	DECLARE ("i8* @aligned_alloc(i32, i32)");
 	DECLARE ("void @llvm.memcpy.p0i8.p0i8.i32(i8*, i8*, i32, i32, i1)");
 	DECLARE ("void @llvm.donothing() nounwind readnone");
+	DECLARE ("void @llvm.debugtrap() nounwind");
 	EMIT_ ("%%tagged = type i64");
 	EMIT_ ("%%closurefunc = type %%tagged (%%closure*, ...)*");
 	EMIT_ ("%%thunkfunc = type %%tagged (%%closure*)*");
@@ -540,7 +544,7 @@ SmJit* sm_compile (const char* name, SmExpr* expr) {
 	POP_BLOCK;
 
 	PUSH_NEW_BLOCK;
-	BEGIN_FUNC("%%tagged", "thunk_cache", "%%closure*");
+	BEGIN_FUNC_ATTRS("%%tagged", "thunk_cache", "%%closure*", "readonly");
 	int thunk = sm_code_get_temp (code); // first param
 	LABEL("entry");
 	int objptr = GETPTR("%%closure* %%%d", "i32 0, i32 %d", thunk, CLOSURE_CACHE);

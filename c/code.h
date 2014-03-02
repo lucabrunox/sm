@@ -14,6 +14,8 @@
 #define END_FUNC EMIT_("}")
 #define LABEL(x,...) EMIT_(x ":", ##__VA_ARGS__)
 #define CALL(s,...) EMIT("call " s, ##__VA_ARGS__);
+#define TAILCALL(s,...) EMIT("tail call fastcc " s, ##__VA_ARGS__);
+#define TAILCALL_(s,...) EMIT_("tail call fastcc " s, ##__VA_ARGS__);
 #define BR(x,...) EMIT_("br " x, ##__VA_ARGS__);
 #define CALL_(s,...) EMIT_("call " s, ##__VA_ARGS__);
 #define LOAD(s,...) EMIT("load " s, ##__VA_ARGS__);

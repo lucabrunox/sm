@@ -138,7 +138,7 @@ static void enter (SmCompile* comp, int closure) {
 	GET_CODE;
 	int funcptr = GETPTR("%%closure* %%%d, i32 0, i32 %d", closure, CLOSURE_FUNC);
 	int func = LOAD("%%closurefunc* %%%d", funcptr);
-	CALL_ ("void %%%d(%%closure* %%%d)", func, closure);
+	TAILCALL_ ("void %%%d(%%closure* %%%d)", func, closure);
 	RET("void");
 }
 
@@ -281,7 +281,7 @@ static long long unsigned int tagmap[] = {
 	[TYPE_NIL] = 0
 };
 		
-static int try_var (SmCompile* comp, SmVar var, SmVarType type) {
+int try_var (SmCompile* comp, SmVar var, SmVarType type) {
 	GET_CODE;
 	int object = var.id;
 	if (var.isthunk) {
@@ -498,6 +498,7 @@ DEFUNC(compile_literal, SmLiteral) {
 		obj = EMIT ("lshr exact %%tagged %%%d, 3", obj);
 		obj = EMIT ("or %%tagged %%%d, %llu", obj, TAG_STR);
 		SPSET(sp, 0, obj, NULL);
+		
 		ENTER(cont);
 		comp->use_temps = old_use_temps;
 		end_thunk_func (comp);

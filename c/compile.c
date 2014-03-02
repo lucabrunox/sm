@@ -438,10 +438,12 @@ DEFUNC(compile_seq_expr, SmSeqExpr) {
 		}
 	}
 
-	// TODO: drop thunk
+	COMMENT("visit seq result");
 	SmVar result = VISIT(expr->result);
 	int sp = LOADSP;
+	COMMENT("pop parameters");
 	VARSP(sp, nparams);
+	COMMENT("enter result");
 	ENTER(result.id);
 	comp->use_temps = old_use_temps;
 	end_closure_func (comp);
@@ -522,16 +524,18 @@ DEFUNC(compile_call_expr, SmCallExpr) {
 	COMMENT("call thunk func");
 
 	int sp = LOADSP;
-	COMMENT("push arguments");
-	VARSP(sp, -expr->args->len);
+	COMMENT("set arguments");
 	for (int i=0; i < expr->args->len; i++) {
 		COMMENT("visit arg %d", i);
 		SmVar arg = VISIT(EXPR(expr->args->pdata[i]));
-		SPSET(sp, i, arg.id, "%closure*");
+		SPSET(sp, -i-1, arg.id, "%closure*"); // -1 to not overwrite the continuation
 	}
 	
 	COMMENT("visit func");
 	SmVar func = VISIT(expr->func);
+	COMMENT("push args onto the stack");
+	VARSP(sp, -expr->args->len);
+	COMMENT("enter func");
 	ENTER(func.id);
 	end_thunk_func (comp);
 	

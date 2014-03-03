@@ -11,12 +11,12 @@
 #include "code.h"
 #include "astdumper.h"
 
-#define DEFUNC(n,x) static SmVar n (SmCompile* comp, x* expr)
+#define DEFUNC(n,x) static SmVar n (SmCompile* comp, x* expr, int prealloc)
 #define GET_CODE SmCode* code = comp->code
 #define PUSH_BLOCK(x) sm_code_push_block(code, x)
 #define POP_BLOCK sm_code_pop_block(code)
 #define RETVAL(x,y,z) SmVar _res_var={.x, .y, .z}; return _res_var
-#define VISIT(x) call_compile_table (comp, EXPR(x))
+#define VISIT(x) call_compile_table (comp, EXPR(x), -1)
 #define PUSH_NEW_BLOCK PUSH_BLOCK(sm_code_new_block (code))
 #define LOADSP load_sp(comp)
 #define SPGET(sp,x,c) sp_get(comp, sp, x, c)
@@ -87,7 +87,7 @@ typedef struct {
 	int use_temps;
 } SmCompile;
 
-static SmVar call_compile_table (SmCompile* comp, SmExpr* expr);
+static SmVar call_compile_table (SmCompile* comp, SmExpr* expr, int prealloc);
 
 static int load_sp (SmCompile* comp) {
 	GET_CODE;
@@ -200,14 +200,28 @@ static void end_closure_func (SmCompile* comp) {
 	POP_BLOCK;
 }
 
-static int create_closure (SmCompile* comp, int closureid) {
+static int allocate_closure (SmCompile* comp) {
 	GET_CODE;
+	
 	int parent_size = comp->scope ? scope_size (comp->scope->parent) : 0;
 	int local_size = comp->scope ? g_hash_table_size (comp->scope->map) : 0;
 	COMMENT("alloc closure with %d vars", parent_size+local_size);
 	int alloc = CALL("i8* @aligned_alloc(i32 8, i32 %lu)",
 					 sizeof(void*)*CLOSURE_SCOPE+sizeof(void*)*(parent_size+local_size));
 	int closure = BITCAST("i8* %%%d", "%%closure*", alloc);
+	return closure;
+}
+
+static int create_closure (SmCompile* comp, int closureid, int prealloc) {
+	GET_CODE;
+	int parent_size = comp->scope ? scope_size (comp->scope->parent) : 0;
+	int local_size = comp->scope ? g_hash_table_size (comp->scope->map) : 0;
+	int closure;
+	if (prealloc >= 0) {
+		closure = prealloc;
+	} else {
+		closure = allocate_closure (comp);
+	}
 
 	COMMENT("store closure function");
 	int funcptr = GETPTR("%%closure* %%%d, i32 0, i32 %d", closure, CLOSURE_FUNC);
@@ -256,7 +270,7 @@ static long long unsigned int tagmap[] = {
 	[TYPE_NIL] = 0
 };
 
-void sm_debug (SmCompile* comp, const char* fmt, int var, const char* cast) {
+static void sm_debug (SmCompile* comp, const char* fmt, int var, const char* cast) {
 	if (!comp->opts.debug) {
 		return;
 	}
@@ -363,7 +377,7 @@ DEFUNC(compile_member_expr, SmMemberExpr) {
 		int objptr = GETPTR("%%closure* %%0, i32 0, i32 %d, i32 %d", CLOSURE_SCOPE, varid);
 		obj = LOAD("%%closure** %%%d", objptr);
 		sm_debug(comp, "no temps, closure member %p\n", obj, "%closure*");
-	}		
+	}
 	RETVAL(id=obj, isthunk=TRUE, type=TYPE_UNK);
 }
 
@@ -423,7 +437,31 @@ DEFUNC(compile_seq_expr, SmSeqExpr) {
 	
 	// make room for locals
 	sp = VARSP(sp, -expr->assigns->len);
-	
+
+	/* preallocate closures */
+	/* as a big lazy hack, keep track of the number of temporaries necessary to allocate a closure */
+	int start_alloc = -1;
+	int cur_alloc = 0;
+	int temp_diff = 0; // keep track of the number of temporaries necessary to allocate a closure
+	for (int i=0; i < expr->assigns->len; i++) {
+		SmAssignExpr* assign = (SmAssignExpr*) expr->assigns->pdata[i];
+		GPtrArray* names = assign->names;
+		if (names->len == 1) {
+			const char* name = (const char*) names->pdata[0];
+			COMMENT("allocate for %s(%d)", name, i);
+			int alloc = allocate_closure (comp);
+			temp_diff = alloc-cur_alloc;
+			cur_alloc = alloc;
+			if (start_alloc < 0) {
+				start_alloc = alloc;
+			}
+			SPSET(sp, i, alloc, "%closure*");
+		} else {
+			printf("unsupported pattern match\n");
+			exit(0);
+		}
+	}
+
 	/* visit assignments */
 	for (int i=0; i < expr->assigns->len; i++) {
 		SmAssignExpr* assign = (SmAssignExpr*) expr->assigns->pdata[i];
@@ -431,9 +469,9 @@ DEFUNC(compile_seq_expr, SmSeqExpr) {
 		if (names->len == 1) {
 			const char* name = (const char*) names->pdata[0];
 			COMMENT("assign for %s(%d)", name, i);
-			SmVar value = VISIT(assign->value);
-			SPSET(sp, i, value.id, "%closure*");
-			sm_debug(comp, "assign %p\n", value.id, "%closure*");
+			sm_debug(comp, "assign %p\n", start_alloc, "%closure*");
+			call_compile_table (comp, EXPR(assign->value), start_alloc);
+			start_alloc += temp_diff;
 		} else {
 			printf("unsupported pattern match\n");
 			exit(0);
@@ -456,7 +494,7 @@ DEFUNC(compile_seq_expr, SmSeqExpr) {
 
 	COMMENT("create seq closure");
 	COMMENT("ast: %s", g_strescape (sm_ast_dump(EXPR(expr)), NULL));
-	int closure = create_closure (comp, closureid);
+	int closure = create_closure (comp, closureid, prealloc);
 
 	if (!func) {
 		RETVAL(id=closure, isthunk=TRUE, type=result.type);
@@ -492,7 +530,7 @@ DEFUNC(compile_func_expr, SmFuncExpr) {
 	BACKTEMPS;
 	end_closure_func (comp);
 	
-	int closure = create_closure (comp, closureid);
+	int closure = create_closure (comp, closureid, prealloc);
 	RETVAL(id=closure, isthunk=TRUE, type=TYPE_FUN);
 }
 
@@ -531,7 +569,7 @@ DEFUNC(compile_literal, SmLiteral) {
 
 		// build thunk
 		COMMENT("create string thunk");
-		int thunk = create_closure (comp, thunkid);
+		int thunk = create_closure (comp, thunkid, prealloc);
 		RETVAL(id=thunk, isthunk=TRUE, type=TYPE_STR);
 	} else {
 		// TODO: 
@@ -573,7 +611,7 @@ static int create_real_call_closure (SmCompile* comp, SmCallExpr* expr) {
 	end_closure_func (comp);
 
 	COMMENT("create real call closure");
-	int closure = create_closure (comp, closureid);
+	int closure = create_closure (comp, closureid, -1);
 	return closure;
 }
 
@@ -602,12 +640,12 @@ DEFUNC(compile_call_expr, SmCallExpr) {
 	
 	// build thunk
 	COMMENT("create call thunk");
-	int thunk = create_closure (comp, thunkid);
+	int thunk = create_closure (comp, thunkid, prealloc);
 	RETVAL(id=thunk, isthunk=TRUE, type=TYPE_UNK);
 }
 
-#define CAST(x) (SmVar (*)(SmCompile*, SmExpr*))(x)
-SmVar (*compile_table[])(SmCompile*, SmExpr*) = {
+#define CAST(x) (SmVar (*)(SmCompile*, SmExpr*, int prealloc))(x)
+SmVar (*compile_table[])(SmCompile*, SmExpr*, int prealloc) = {
 	[SM_MEMBER_EXPR] = CAST(compile_member_expr),
 	[SM_SEQ_EXPR] = CAST(compile_seq_expr),
 	[SM_LITERAL] = CAST(compile_literal),
@@ -615,8 +653,8 @@ SmVar (*compile_table[])(SmCompile*, SmExpr*) = {
 	[SM_CALL_EXPR] = CAST(compile_call_expr)
 };
 
-static SmVar call_compile_table (SmCompile* comp, SmExpr* expr) {
-	return compile_table[expr->type](comp, expr);
+static SmVar call_compile_table (SmCompile* comp, SmExpr* expr, int prealloc) {
+	return compile_table[expr->type](comp, expr, prealloc);
 }
 
 static int create_nop_closure (SmCompile* comp) {
@@ -636,7 +674,7 @@ static int create_nop_closure (SmCompile* comp) {
 	end_closure_func (comp);
 	COMMENT("nop closure");
 	
-	int nopclo = create_closure (comp, nopid);
+	int nopclo = create_closure (comp, nopid, -1);
 	return nopclo;
 }
 
@@ -667,7 +705,7 @@ static int create_prim_print (SmCompile* comp) {
 	BACKTEMPS;
 	end_closure_func (comp);
 
-	int direct = create_closure (comp, directid);
+	int direct = create_closure (comp, directid, -1);
 	return direct;
 }
 
@@ -696,7 +734,7 @@ static int create_print_closure (SmCompile* comp) {
 	end_closure_func (comp);
 
 	COMMENT("create print closure");
-	int printclo = create_closure (comp, printid);
+	int printclo = create_closure (comp, printid, -1);
 	return printclo;
 }
 

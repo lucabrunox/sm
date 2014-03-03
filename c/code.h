@@ -41,6 +41,7 @@ SmCode* sm_code_new (void);
 void sm_code_emit (SmCode* code, const char* fmt, ...) __attribute__ ((format (printf, 2, 3)));
 void sm_code_emitv (SmCode* code, const char* fmt, va_list ap);
 int sm_code_get_temp (SmCode* code);
+int sm_code_peek_temp (SmCode* code);
 int sm_code_get_label (SmCode* code);
 int sm_code_emit_temp (SmCode* code, const char* fmt, ...) __attribute__ ((format (printf, 2, 3)));
 int sm_code_emit_tempv (SmCode* code, const char* fmt, va_list ap);

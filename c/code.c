@@ -49,6 +49,10 @@ int sm_code_get_temp (SmCode* code) {
 	return code->current->varcount++;
 }
 
+int sm_code_peek_temp (SmCode* code) {
+	return code->current->varcount;
+}
+
 int sm_code_get_label (SmCode* code) {
 	return code->current->labelcount++;
 }

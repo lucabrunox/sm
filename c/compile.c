@@ -24,6 +24,9 @@
 #define SPFIN(sp,x,v,c) sp_fin(comp, sp, x, v, c)
 #define VARSP(sp,x) var_sp(comp, sp, x)
 #define ENTER(x) enter(comp, x)
+#define NOTEMPS int old_use_temps = comp->use_temps; comp->use_temps = FALSE
+#define BACKTEMPS comp->use_temps = old_use_temps
+#define BREAKPOINT CALL_("void @llvm.debugtrap()")
 
 #define CLOSURE_FUNC 0
 #define CLOSURE_CACHE 1
@@ -92,6 +95,7 @@ static int load_sp (SmCompile* comp) {
 
 static int sp_get (SmCompile* comp, int sp, int x, const char* cast) {
 	GET_CODE;
+	COMMENT("sp[%d]", x);
 	sp = GETPTR("i64* %%%d, i32 %d", sp, x);
 	int val = LOAD("i64* %%%d", sp);
 	if (cast) {
@@ -102,6 +106,7 @@ static int sp_get (SmCompile* comp, int sp, int x, const char* cast) {
 
 static void sp_set (SmCompile* comp, int sp, int x, int v, const char* cast) {
 	GET_CODE;
+	COMMENT("sp[%d] = %%%d", x, v);
 	if (cast) {
 		v = TOINT("%s %%%d", "i64", cast, v);
 	}
@@ -112,12 +117,14 @@ static void sp_set (SmCompile* comp, int sp, int x, int v, const char* cast) {
 // set and update the sp
 static int sp_fin (SmCompile* comp, int sp, int x, int v, const char* cast) {
 	GET_CODE;
+	COMMENT("sp[%d] = %%%d", x, v);
 	if (cast) {
 		v = TOINT("%s %%%d", "i64", cast, v);
 	}
 	sp = GETPTR("i64* %%%d, i32 %d", sp, x)
 	STORE("i64 %%%d", "i64* %%%d", v, sp);
 	if (x) {
+		COMMENT("sp += %d", x);
 		STORE("i64* %%%d", "i64** @sp", sp);
 	}
 	return sp;
@@ -129,6 +136,7 @@ static int var_sp (SmCompile* comp, int sp, int x) {
 	}
 	
 	GET_CODE;
+	COMMENT("sp += %d", x);
 	sp = GETPTR("i64* %%%d, i32 %d", sp, x);
 	STORE("i64* %%%d", "i64** @sp", sp);
 	return sp;
@@ -167,7 +175,7 @@ static int begin_closure_func (SmCompile* comp, int closureid) {
 	GET_CODE;
 
 	PUSH_NEW_BLOCK;
-	BEGIN_FUNC("void", "closure_%d_eval", "%%closure*", closureid);
+	BEGIN_FUNC("fastcc void", "closure_%d_eval", "%%closure*", closureid);
 	
 	int closure = sm_code_get_temp (code); // first param
 	LABEL("entry");
@@ -217,11 +225,10 @@ static int eval_thunk (SmCompile* comp, int thunk) {
 static int create_closure (SmCompile* comp, int closureid) {
 	GET_CODE;
 	int parent_size = comp->scope ? scope_size (comp->scope->parent) : 0;
-	int nparams = comp->scope ? comp->scope->nparams : 0;
-	int local_size = (comp->scope ? g_hash_table_size (comp->scope->map) : 0) - nparams;
-	COMMENT("alloc closure with %d vars", parent_size+local_size+nparams);
+	int local_size = comp->scope ? g_hash_table_size (comp->scope->map) : 0;
+	COMMENT("alloc closure with %d vars", parent_size+local_size);
 	int alloc = CALL("i8* @aligned_alloc(i32 8, i32 %lu)",
-					 sizeof(void*)*CLOSURE_SCOPE+sizeof(void*)*(parent_size+local_size+nparams));
+					 sizeof(void*)*CLOSURE_SCOPE+sizeof(void*)*(parent_size+local_size));
 	int closure = BITCAST("i8* %%%d", "%%closure*", alloc);
 
 	COMMENT("store closure function");
@@ -240,22 +247,16 @@ static int create_closure (SmCompile* comp, int closureid) {
 				STORE("%%closure* %%%d", "%%closure** %%%d", src, destptr);
 			}
 
-			COMMENT("capture local variables");
+			COMMENT("capture params+locals");
+			int sp = LOADSP;
 			for (int i=0; i < local_size; i++) {
 				int destptr = GETPTR("%%closure* %%%d, i32 0, i32 %d, i32 %d", closure, CLOSURE_SCOPE, i+parent_size);
-				STORE("%%closure* %%%d", "%%closure** %%%d", i+1, destptr); // because 0 is closure param
-			}
-			
-			COMMENT("capture params");
-			int sp = LOADSP;
-			for (int i=0; i < nparams; i++) {
-				int destptr = GETPTR("%%closure* %%%d, i32 0, i32 %d, i32 %d", closure, CLOSURE_SCOPE, i);
 				int src = SPGET(sp, i, "%closure*");
 				STORE("%%closure* %%%d", "%%closure** %%%d", src, destptr);
-			}				
+			}
 		} else {
 			COMMENT("capture scope from within a thunk");
-			for (int i=0; i < parent_size+local_size+nparams; i++) {
+			for (int i=0; i < parent_size+local_size; i++) {
 				int srcptr = GETPTR("%%closure* %%0, i32 0, i32 %d, i32 %d", CLOSURE_SCOPE, i);
 				int destptr = GETPTR("%%closure* %%%d, i32 0, i32 %d, i32 %d", closure, CLOSURE_SCOPE, i);
 				int src = LOAD("%%closure** %%%d", srcptr);
@@ -280,7 +281,27 @@ static long long unsigned int tagmap[] = {
 	[TYPE_STR] = TAG_STR,
 	[TYPE_NIL] = 0
 };
-		
+
+void sm_debug (SmCompile* comp, int var, const char* cast) {
+	GET_CODE;
+	
+	static const char* str = "debug %p\n";
+	int len = strlen(str)+1;
+	static int consttmp = -1;
+	if (consttmp < 0) {
+		PUSH_BLOCK(comp->decls);
+		consttmp = sm_code_get_temp (code);
+		EMIT_ ("@.const%d = private constant [%d x i8] c\"%s\\00\", align 8", consttmp, len, str);
+		POP_BLOCK;
+	}
+
+	if (cast) {
+		var = TOINT("%s %%%d", "i64", cast, var);
+	}
+	int strptr = BITCAST("[%d x i8]* @.const%d", "i8*", len, consttmp);
+	CALL ("i32 (i8*, ...)* @printf(i8* %%%d, i64 %%%d)", strptr, var);
+}
+
 int try_var (SmCompile* comp, SmVar var, SmVarType type) {
 	GET_CODE;
 	int object = var.id;
@@ -354,19 +375,23 @@ DEFUNC(compile_member_expr, SmMemberExpr) {
 	int parent_size = comp->scope ? scope_size (comp->scope->parent) : 0;
 
 	int obj;
-	if (varid < parent_size) {
-		COMMENT("member %s(%d) from closure", expr->name, varid);
+	if (comp->use_temps) {
+		if (varid < parent_size) {
+			COMMENT("member %s(%d) from closure", expr->name, varid);
+			// 0 = closure param
+			int objptr = GETPTR("%%closure* %%0, i32 0, i32 %d, i32 %d", CLOSURE_SCOPE, varid);
+			obj = LOAD("%%closure** %%%d", objptr);
+		} else {
+			// from the stack
+			COMMENT("member %s(%d) from stack", expr->name, varid);
+			int sp = LOADSP;
+			obj = SPGET(sp, varid-parent_size, "%closure*");
+		}
+	} else {
 		// 0 = closure param
 		int objptr = GETPTR("%%closure* %%0, i32 0, i32 %d, i32 %d", CLOSURE_SCOPE, varid);
 		obj = LOAD("%%closure** %%%d", objptr);
-	} else {
-		// from the stack
-		int sp = LOADSP;
-		obj = SPGET(sp, varid-parent_size, "%closure*");
-	}
-	if (!strcmp(expr->name, "x")) {
-		CALL_("void @llvm.debugtrap()");
-	}
+	}		
 	RETVAL(id=obj, isthunk=TRUE, type=TYPE_UNK);
 }
 
@@ -390,22 +415,10 @@ DEFUNC(compile_seq_expr, SmSeqExpr) {
 	int old_use_temps = comp->use_temps;
 	comp->use_temps = TRUE;
 	COMMENT("seq/func closure");
-	
-	/* assign ids to arguments */
+	int sp = LOADSP;
+
 	int varid = 0;
-	for (int i=0; i < nparams; i++) {
-		const char* name = (const char*) func->params->pdata[i];
-		
-		int existing = scope_lookup (scope, name);
-		if (existing >= 0) {
-			printf("shadowing %s\n", name);
-			exit(0);
-		}
-
-		g_hash_table_insert (scope->map, (gpointer)name, GINT_TO_POINTER(varid++));
-	}
-
-	/* create temps for local variables */
+	/* assign ids to locals */
 	for (int i=0; i < expr->assigns->len; i++) {
 		SmAssignExpr* assign = (SmAssignExpr*) expr->assigns->pdata[i];
 		GPtrArray* names = assign->names;
@@ -418,9 +431,25 @@ DEFUNC(compile_seq_expr, SmSeqExpr) {
 				exit(0);
 			}
 
-			g_hash_table_insert (scope->map, (gpointer)name, GINT_TO_POINTER(sm_code_get_temp(code)));
+			g_hash_table_insert (scope->map, (gpointer)name, GINT_TO_POINTER(varid++));
 		}
 	}
+
+	/* assign ids to arguments */
+	for (int i=0; i < nparams; i++) {
+		const char* name = (const char*) func->params->pdata[i];
+		
+		int existing = scope_lookup (scope, name);
+		if (existing >= 0) {
+			printf("shadowing %s\n", name);
+			exit(0);
+		}
+
+		g_hash_table_insert (scope->map, (gpointer)name, GINT_TO_POINTER(varid++));
+	}
+	
+	// make room for locals
+	sp = VARSP(sp, -expr->assigns->len);
 	
 	/* visit assignments */
 	for (int i=0; i < expr->assigns->len; i++) {
@@ -428,10 +457,9 @@ DEFUNC(compile_seq_expr, SmSeqExpr) {
 		GPtrArray* names = assign->names;
 		if (names->len == 1) {
 			const char* name = (const char*) names->pdata[0];
-			int id = scope_lookup (scope, name);
-			COMMENT("assign for %s(%d)\n", name, id);
+			COMMENT("assign for %s(%d)", name, i);
 			SmVar value = VISIT(assign->value);
-			EMIT_("%%%d = %%%d", id, value.id);
+			SPSET(sp, i, value.id, "%closure*");
 		} else {
 			printf("unsupported pattern match\n");
 			exit(0);
@@ -440,9 +468,8 @@ DEFUNC(compile_seq_expr, SmSeqExpr) {
 
 	COMMENT("visit seq result");
 	SmVar result = VISIT(expr->result);
-	int sp = LOADSP;
-	COMMENT("pop parameters");
-	VARSP(sp, nparams);
+	COMMENT("pop parameters and locals");
+	VARSP(sp, nparams+expr->assigns->len);
 	COMMENT("enter result");
 	ENTER(result.id);
 	comp->use_temps = old_use_temps;
@@ -491,8 +518,9 @@ DEFUNC(compile_literal, SmLiteral) {
 		int thunkid = comp->next_closureid++;
 		// expression code
 		begin_thunk_func (comp, thunkid);
-		int old_use_temps = comp->use_temps;
+		NOTEMPS;
 		COMMENT("string thunk code for '%s' string", expr->str);
+
 		int sp = LOADSP;
 		int cont = SPGET(sp, 0, "%closure*");
 		int obj = GETPTR("[%d x i8]* @.const%d, i32 0, i32 0", len, consttmp);
@@ -500,9 +528,9 @@ DEFUNC(compile_literal, SmLiteral) {
 		obj = EMIT ("lshr exact %%tagged %%%d, 3", obj);
 		obj = EMIT ("or %%tagged %%%d, %llu", obj, TAG_STR);
 		SPSET(sp, 0, obj, NULL);
-		
+
 		ENTER(cont);
-		comp->use_temps = old_use_temps;
+		BACKTEMPS;
 		end_thunk_func (comp);
 
 		// build thunk
@@ -521,6 +549,7 @@ DEFUNC(compile_call_expr, SmCallExpr) {
 	
 	int thunkid = comp->next_closureid++;
 	begin_thunk_func (comp, thunkid);
+	NOTEMPS;
 	COMMENT("call thunk func");
 
 	int sp = LOADSP;
@@ -537,6 +566,7 @@ DEFUNC(compile_call_expr, SmCallExpr) {
 	VARSP(sp, -expr->args->len);
 	COMMENT("enter func");
 	ENTER(func.id);
+	BACKTEMPS;
 	end_thunk_func (comp);
 	
 	// build thunk
@@ -562,10 +592,15 @@ static int create_nop_closure (SmCompile* comp) {
 	GET_CODE;
 	int nopid = comp->next_closureid++;
 	begin_closure_func (comp, nopid);
+	NOTEMPS;
+	
 	COMMENT("nop func"); // discards one object from the stack
 	int sp = LOADSP;
 	VARSP(sp, 1);
+	// end of the program
 	RET("void");
+
+	BACKTEMPS;
 	end_closure_func (comp);
 	COMMENT("nop closure");
 	
@@ -573,12 +608,12 @@ static int create_nop_closure (SmCompile* comp) {
 	return nopclo;
 }
 
-static int create_print_closure (SmCompile* comp) {
+static int create_prim_print (SmCompile* comp) {
 	GET_CODE;
 	int directid = comp->next_closureid++;
 	begin_closure_func (comp, directid);
 	COMMENT("real print func");
-	int old_use_temps = comp->use_temps;
+	NOTEMPS;
 	int sp = LOADSP;
 	COMMENT("get string");
 	int str = SPGET(sp, 0, NULL);
@@ -592,25 +627,32 @@ static int create_print_closure (SmCompile* comp) {
 	COMMENT("put string back in the stack");
 	SPFIN(sp, 1, str, "i8*");
 	ENTER(cont);
-	comp->use_temps = old_use_temps;
+	BACKTEMPS;
 	end_closure_func (comp);
 
+	int direct = create_closure (comp, directid);
+	return direct;
+}
+
+static int create_print_closure (SmCompile* comp) {
+	GET_CODE;
+	
 	int printid = comp->next_closureid++;
 	begin_closure_func (comp, printid);
-	old_use_temps = comp->use_temps;
+	NOTEMPS;
 	COMMENT("print closure func");
 	COMMENT("create direct closure");
-	int direct = create_closure (comp, directid);
+	int direct = create_prim_print (comp);
 	
-	sp = LOADSP;
+	int sp = LOADSP;
 	COMMENT("get string thunk");
-	str = SPGET(sp, 0, "%closure*");
+	int str = SPGET(sp, 0, "%closure*");
 	COMMENT("push direct print closure");
 	SPFIN(sp, 0, direct, "%closure*");
 
 	COMMENT("enter string");
 	ENTER(str);
-	comp->use_temps = old_use_temps;
+	BACKTEMPS;
 	end_closure_func (comp);
 
 	COMMENT("create print closure");

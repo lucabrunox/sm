@@ -6,10 +6,12 @@
 #include <llvm/LLVMContext.h>
 #include <llvm/Support/IRReader.h>
 #include <llvm/Module.h>
+#include <llvm/DataLayout.h>
 #else
 #include <llvm/IRReader/IRReader.h>
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Module.h>
+#include <llvm/IR/DataLayout.h>
 #endif
 
 #include <llvm/Support/MemoryBuffer.h>
@@ -22,7 +24,6 @@
 #include <llvm/Assembly/AssemblyAnnotationWriter.h>
 #include <llvm/Transforms/Scalar.h>
 #include <llvm/Analysis/Passes.h>
-#include <llvm/IR/DataLayout.h>
 #include <llvm/PassManager.h>
 #include <llvm/Assembly/PrintModulePass.h>
 

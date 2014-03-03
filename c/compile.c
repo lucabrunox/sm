@@ -337,13 +337,7 @@ int try_var (SmCompile* comp, SmVar var, SmVarType type) {
 		LABEL("fail%d", faillabel);
 		int strptr = BITCAST("[%d x i8]* @.const%d", "i8*", len, consttmp);
 		CALL ("i32 (i8*, ...)* @printf(i8* %%%d, i64 %llu, i64 %%%d)", strptr, tagmap[type], tag);
-		if (!comp->scope) {
-			// we're in main
-			RET("void");
-		} else {
-		// FIXME: throw meaningful exception
-			RET("i64 0");
-		}
+		RET("void");
 
 		LABEL("ok%d", ok);
 		object = EMIT("and %%tagged %%%d, %llu", object, OBJ_MASK);
@@ -497,9 +491,25 @@ DEFUNC(compile_seq_expr, SmSeqExpr) {
 
 DEFUNC(compile_func_expr, SmFuncExpr) {
 	GET_CODE;
-	COMMENT("func: visit body");
+	int closureid = comp->next_closureid++;
+	begin_closure_func (comp, closureid);
+	NOTEMPS;
+	COMMENT("func thunk");
+	COMMENT("get cont");
+	int sp = LOADSP;
+	int cont = SPGET(sp, 0, "%closure*");
+	
+	COMMENT("visit body");
 	SmVar result = VISIT(expr->body);
-	return result;
+	COMMENT("push func object");
+	SPSET(sp, 0, result.id, NULL);
+	COMMENT("enter cont");
+	ENTER(cont);
+	BACKTEMPS;
+	end_closure_func (comp);
+	
+	int closure = create_closure (comp, closureid);
+	RETVAL(id=closure, isthunk=TRUE, type=TYPE_FUN);
 }
 
 DEFUNC(compile_literal, SmLiteral) {
@@ -544,6 +554,40 @@ DEFUNC(compile_literal, SmLiteral) {
 	}
 }
 
+static int create_real_call_closure (SmCompile* comp, SmCallExpr* expr) {
+	GET_CODE;
+
+	int closureid = comp->next_closureid++;
+	begin_closure_func (comp, closureid);
+	COMMENT("real call func");
+	NOTEMPS;
+
+	int sp = LOADSP;
+	COMMENT("get func");
+	int func = SPGET(sp, 0, "%tagged");
+	SmVar funcvar = { .id=func, .isthunk=FALSE, .type=TYPE_UNK };
+	func = try_var (comp, funcvar, TYPE_FUN);
+	
+	COMMENT("set arguments");
+	for (int i=0; i < expr->args->len; i++) {
+		COMMENT("visit arg %d", i);
+		SmVar arg = VISIT(EXPR(expr->args->pdata[i]));
+		SPSET(sp, i-expr->args->len, arg.id, "%closure*");
+	}
+	
+	COMMENT("push args onto the stack");
+	VARSP(sp, -expr->args->len);
+	COMMENT("enter real func");
+	ENTER(func);
+
+	BACKTEMPS;
+	end_closure_func (comp);
+
+	COMMENT("create real call closure");
+	int closure = create_closure (comp, closureid);
+	return closure;
+}
+
 DEFUNC(compile_call_expr, SmCallExpr) {
 	GET_CODE;
 	
@@ -551,21 +595,16 @@ DEFUNC(compile_call_expr, SmCallExpr) {
 	begin_thunk_func (comp, thunkid);
 	NOTEMPS;
 	COMMENT("call thunk func");
-
 	int sp = LOADSP;
-	COMMENT("set arguments");
-	for (int i=0; i < expr->args->len; i++) {
-		COMMENT("visit arg %d", i);
-		SmVar arg = VISIT(EXPR(expr->args->pdata[i]));
-		SPSET(sp, -i-1, arg.id, "%closure*"); // -1 to not overwrite the continuation
-	}
+	COMMENT("create real call closure");
+	int realfunc = create_real_call_closure (comp, expr);
+	SPFIN(sp, -1, realfunc, "%closure*");
 	
 	COMMENT("visit func");
 	SmVar func = VISIT(expr->func);
-	COMMENT("push args onto the stack");
-	VARSP(sp, -expr->args->len);
-	COMMENT("enter func");
+	COMMENT("force func");
 	ENTER(func.id);
+	
 	BACKTEMPS;
 	end_thunk_func (comp);
 	
@@ -642,12 +681,14 @@ static int create_print_closure (SmCompile* comp) {
 	NOTEMPS;
 	COMMENT("print closure func");
 	COMMENT("create direct closure");
-	int direct = create_prim_print (comp);
+
 	
 	int sp = LOADSP;
 	COMMENT("get string thunk");
 	int str = SPGET(sp, 0, "%closure*");
+
 	COMMENT("push direct print closure");
+	int direct = create_prim_print (comp);
 	SPFIN(sp, 0, direct, "%closure*");
 
 	COMMENT("enter string");

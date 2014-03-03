@@ -76,6 +76,7 @@ typedef struct {
 } SmExc;
 
 typedef struct {
+	SmCompileOpts opts;
 	SmCode* code;
 	SmCodeBlock* decls;
 	SmVar ret;
@@ -150,25 +151,24 @@ static void enter (SmCompile* comp, int closure) {
 	RET("void");
 }
 
-static int scope_lookup (SmScope* scope, const char* name) {
-	int offset = 0;
-	while (scope) {
-		int64_t id;
-		if (g_hash_table_lookup_extended (scope->map, (gpointer)name, NULL, (gpointer*)&id)) {
-			return offset+id;
-		}
-		offset += g_hash_table_size (scope->map);
-		scope = scope->parent;
-	}
-	return -1;
-}
-
 static int scope_size (SmScope* scope) {
 	if (!scope) {
 		return 0;
 	}
 	int size = g_hash_table_size (scope->map);
 	return scope_size (scope->parent)+size;
+}
+
+
+static int scope_lookup (SmScope* scope, const char* name) {
+	while (scope) {
+		int64_t id;
+		if (g_hash_table_lookup_extended (scope->map, (gpointer)name, NULL, (gpointer*)&id)) {
+			return scope_size (scope->parent)+id;
+		}
+		scope = scope->parent;
+	}
+	return -1;
 }
 
 static int begin_closure_func (SmCompile* comp, int closureid) {
@@ -206,20 +206,6 @@ static void end_closure_func (SmCompile* comp) {
 
 static void end_thunk_func (SmCompile* comp) {
 	end_closure_func (comp);
-}
-
-static int eval_thunk (SmCompile* comp, int thunk) {
-	GET_CODE;
-	COMMENT("eval_thunk: load func");
-	int funcptr = GETPTR("%%closure* %%%d, i32 0, i32 %d", thunk, CLOSURE_FUNC);
-	int func = LOAD("%%closurefunc* %%%d", funcptr);
-
-	// eval thunk
-	COMMENT("eval_thunk: call func");
-	func = BITCAST("%%closurefunc %%%d", "%%thunkfunc", func);
-	int object = CALL("%%tagged %%%d(%%closure* %%%d)", func, thunk);
-
-	return object;
 }
 
 static int create_closure (SmCompile* comp, int closureid) {
@@ -282,18 +268,18 @@ static long long unsigned int tagmap[] = {
 	[TYPE_NIL] = 0
 };
 
-void sm_debug (SmCompile* comp, int var, const char* cast) {
+void sm_debug (SmCompile* comp, const char* fmt, int var, const char* cast) {
+	if (!comp->opts.debug) {
+		return;
+	}
+	
 	GET_CODE;
 	
-	static const char* str = "debug %p\n";
-	int len = strlen(str)+1;
-	static int consttmp = -1;
-	if (consttmp < 0) {
-		PUSH_BLOCK(comp->decls);
-		consttmp = sm_code_get_temp (code);
-		EMIT_ ("@.const%d = private constant [%d x i8] c\"%s\\00\", align 8", consttmp, len, str);
-		POP_BLOCK;
-	}
+	int len = strlen(fmt)+1;
+	PUSH_BLOCK(comp->decls);
+	int consttmp = sm_code_get_temp (code);
+	EMIT_ ("@.const%d = private constant [%d x i8] c\"%s\\00\", align 8", consttmp, len, fmt);
+	POP_BLOCK;
 
 	if (cast) {
 		var = TOINT("%s %%%d", "i64", cast, var);
@@ -304,11 +290,10 @@ void sm_debug (SmCompile* comp, int var, const char* cast) {
 
 int try_var (SmCompile* comp, SmVar var, SmVarType type) {
 	GET_CODE;
-	int object = var.id;
-	if (var.isthunk) {
-		object = eval_thunk (comp, object);
-	}
+	COMMENT("try %%%d, expect %d", var.id, type);
 	
+	int object = var.id;
+	sm_debug(comp, "try var %p\n", object, "%tagged");
 	if (var.type != TYPE_UNK) {
 		if (var.type != type) {
 			printf ("compile-time expected %d, got %d\n", type, var.type);
@@ -317,8 +302,6 @@ int try_var (SmCompile* comp, SmVar var, SmVarType type) {
 			return object;
 		}
 	} else {
-		COMMENT ("try type %d", type);
-
 		int tag = EMIT("and %%tagged %%%d, %llu", object, TAG_MASK);
 		int faillabel = sm_code_get_label (code);
 		int ok = sm_code_get_label (code);
@@ -368,6 +351,10 @@ DEFUNC(compile_member_expr, SmMemberExpr) {
 
 	int parent_size = comp->scope ? scope_size (comp->scope->parent) : 0;
 
+	{
+		int sp = LOADSP;
+		sm_debug(comp, g_strdup_printf("-> member %s, sp=%%p\n", expr->name), sp, "i64*");
+	}
 	int obj;
 	if (comp->use_temps) {
 		if (varid < parent_size) {
@@ -375,16 +362,19 @@ DEFUNC(compile_member_expr, SmMemberExpr) {
 			// 0 = closure param
 			int objptr = GETPTR("%%closure* %%0, i32 0, i32 %d, i32 %d", CLOSURE_SCOPE, varid);
 			obj = LOAD("%%closure** %%%d", objptr);
+			sm_debug(comp, "use temps, closure member %p\n", obj, "%closure*");
 		} else {
 			// from the stack
 			COMMENT("member %s(%d) from stack", expr->name, varid);
 			int sp = LOADSP;
 			obj = SPGET(sp, varid-parent_size, "%closure*");
+			sm_debug(comp, "stack member %p\n", obj, "%closure*");
 		}
 	} else {
 		// 0 = closure param
 		int objptr = GETPTR("%%closure* %%0, i32 0, i32 %d, i32 %d", CLOSURE_SCOPE, varid);
 		obj = LOAD("%%closure** %%%d", objptr);
+		sm_debug(comp, "no temps, closure member %p\n", obj, "%closure*");
 	}		
 	RETVAL(id=obj, isthunk=TRUE, type=TYPE_UNK);
 }
@@ -410,7 +400,8 @@ DEFUNC(compile_seq_expr, SmSeqExpr) {
 	comp->use_temps = TRUE;
 	COMMENT("seq/func closure");
 	int sp = LOADSP;
-
+	sm_debug(comp, "-> seq, sp=%p\n", sp, "i64*");
+	
 	int varid = 0;
 	/* assign ids to locals */
 	for (int i=0; i < expr->assigns->len; i++) {
@@ -454,6 +445,7 @@ DEFUNC(compile_seq_expr, SmSeqExpr) {
 			COMMENT("assign for %s(%d)", name, i);
 			SmVar value = VISIT(assign->value);
 			SPSET(sp, i, value.id, "%closure*");
+			sm_debug(comp, "assign %p\n", value.id, "%closure*");
 		} else {
 			printf("unsupported pattern match\n");
 			exit(0);
@@ -465,6 +457,7 @@ DEFUNC(compile_seq_expr, SmSeqExpr) {
 	COMMENT("pop parameters and locals");
 	VARSP(sp, nparams+expr->assigns->len);
 	COMMENT("enter result");
+	sm_debug(comp, "enter %p\n", result.id, "%closure*");
 	ENTER(result.id);
 	comp->use_temps = old_use_temps;
 	end_closure_func (comp);
@@ -498,12 +491,15 @@ DEFUNC(compile_func_expr, SmFuncExpr) {
 	COMMENT("get cont");
 	int sp = LOADSP;
 	int cont = SPGET(sp, 0, "%closure*");
+	sm_debug(comp, "-> func, sp=%p\n", sp, "i64*");
 	
 	COMMENT("visit body");
 	SmVar result = VISIT(expr->body);
 	COMMENT("push func object");
 	SPSET(sp, 0, result.id, NULL);
+	
 	COMMENT("enter cont");
+	sm_debug(comp, "enter %p\n", cont, "%closure*");
 	ENTER(cont);
 	BACKTEMPS;
 	end_closure_func (comp);
@@ -530,8 +526,9 @@ DEFUNC(compile_literal, SmLiteral) {
 		begin_thunk_func (comp, thunkid);
 		NOTEMPS;
 		COMMENT("string thunk code for '%s' string", expr->str);
-
 		int sp = LOADSP;
+		sm_debug(comp, "-> literal, sp=%p\n", sp, "i64*");
+		
 		int cont = SPGET(sp, 0, "%closure*");
 		int obj = GETPTR("[%d x i8]* @.const%d, i32 0, i32 0", len, consttmp);
 		obj = EMIT ("ptrtoint i8* %%%d to %%tagged", obj);
@@ -539,6 +536,7 @@ DEFUNC(compile_literal, SmLiteral) {
 		obj = EMIT ("or %%tagged %%%d, %llu", obj, TAG_STR);
 		SPSET(sp, 0, obj, NULL);
 
+		sm_debug(comp, "enter %p\n", cont, "%closure*");
 		ENTER(cont);
 		BACKTEMPS;
 		end_thunk_func (comp);
@@ -565,6 +563,8 @@ static int create_real_call_closure (SmCompile* comp, SmCallExpr* expr) {
 	int sp = LOADSP;
 	COMMENT("get func");
 	int func = SPGET(sp, 0, "%tagged");
+	sm_debug(comp, "-> real call, sp=%p\n", sp, "i64*");
+
 	SmVar funcvar = { .id=func, .isthunk=FALSE, .type=TYPE_UNK };
 	func = try_var (comp, funcvar, TYPE_FUN);
 	
@@ -572,12 +572,13 @@ static int create_real_call_closure (SmCompile* comp, SmCallExpr* expr) {
 	for (int i=0; i < expr->args->len; i++) {
 		COMMENT("visit arg %d", i);
 		SmVar arg = VISIT(EXPR(expr->args->pdata[i]));
-		SPSET(sp, i-expr->args->len, arg.id, "%closure*");
+		SPSET(sp, i-expr->args->len+1, arg.id, "%closure*");
 	}
 	
 	COMMENT("push args onto the stack");
-	VARSP(sp, -expr->args->len);
+	VARSP(sp, -expr->args->len+1);
 	COMMENT("enter real func");
+	sm_debug(comp, "enter %p\n", func, "%closure*");
 	ENTER(func);
 
 	BACKTEMPS;
@@ -596,13 +597,16 @@ DEFUNC(compile_call_expr, SmCallExpr) {
 	NOTEMPS;
 	COMMENT("call thunk func");
 	int sp = LOADSP;
-	COMMENT("create real call closure");
-	int realfunc = create_real_call_closure (comp, expr);
-	SPFIN(sp, -1, realfunc, "%closure*");
+	sm_debug(comp, "-> call, sp=%p\n", sp, "i64*");
 	
 	COMMENT("visit func");
 	SmVar func = VISIT(expr->func);
+
+	int realfunc = create_real_call_closure (comp, expr);
+	SPFIN(sp, -1, realfunc, "%closure*");
+	
 	COMMENT("force func");
+	sm_debug(comp, "enter %p\n", func.id, "%closure*");
 	ENTER(func.id);
 	
 	BACKTEMPS;
@@ -635,6 +639,7 @@ static int create_nop_closure (SmCompile* comp) {
 	
 	COMMENT("nop func"); // discards one object from the stack
 	int sp = LOADSP;
+	sm_debug(comp, "nop, sp=%d\n", sp, "i64*");
 	VARSP(sp, 1);
 	// end of the program
 	RET("void");
@@ -656,15 +661,20 @@ static int create_prim_print (SmCompile* comp) {
 	int sp = LOADSP;
 	COMMENT("get string");
 	int str = SPGET(sp, 0, NULL);
+	sm_debug(comp, "-> real print, string object=%p\n", str, "i64");
+	sm_debug(comp, "sp=%p\n", sp, "i64*");
+
 	COMMENT("get continuation");
 	int cont = SPGET(sp, 1, "%closure*");
-	
+	sm_debug(comp, "cont=%p\n", cont, "%closure*");
+
 	SmVar var = { .id=str, .isthunk=FALSE, .type=TYPE_UNK };
 	str = try_var (comp, var, TYPE_STR);
 	CALL ("i32 (i8*, ...)* @printf(i8* %%%d)", str);
 
 	COMMENT("put string back in the stack");
 	SPFIN(sp, 1, str, "i8*");
+	sm_debug(comp, "enter %p", cont, "%closure*");
 	ENTER(cont);
 	BACKTEMPS;
 	end_closure_func (comp);
@@ -682,16 +692,17 @@ static int create_print_closure (SmCompile* comp) {
 	COMMENT("print closure func");
 	COMMENT("create direct closure");
 
-	
 	int sp = LOADSP;
 	COMMENT("get string thunk");
 	int str = SPGET(sp, 0, "%closure*");
+	sm_debug(comp, "-> print closure, sp=%p\n", sp, "i64*");
 
 	COMMENT("push direct print closure");
 	int direct = create_prim_print (comp);
 	SPFIN(sp, 0, direct, "%closure*");
 
 	COMMENT("enter string");
+	sm_debug(comp, "enter string %p\n", str, "%closure*");
 	ENTER(str);
 	BACKTEMPS;
 	end_closure_func (comp);
@@ -701,7 +712,7 @@ static int create_print_closure (SmCompile* comp) {
 	return printclo;
 }
 
-SmJit* sm_compile (const char* name, SmExpr* expr) {
+SmJit* sm_compile (SmCompileOpts opts, const char* name, SmExpr* expr) {
 	static int initialized = 0;
 	if (!initialized) {
 		initialized = 1;
@@ -709,6 +720,7 @@ SmJit* sm_compile (const char* name, SmExpr* expr) {
 	}
 
 	SmCompile* comp = g_new0 (SmCompile, 1);
+	comp->opts = opts;
 	SmCode* code = sm_code_new ();
 	comp->code = code;
 	comp->exc_stack = g_queue_new ();
@@ -747,9 +759,11 @@ SmJit* sm_compile (const char* name, SmExpr* expr) {
 	int stack = CALL("i8* @aligned_alloc(i32 8, i32 %d)", (int)(4096*sizeof(void*)));
 	stack = BITCAST("i8* %%%d", "i64*", stack);
 	STORE("i64* %%%d", "i64** @stack", stack);
+	
 	STORE("i64* %%%d", "i64** @sp", stack);
 	int sp = LOADSP;
 	sp = VARSP(sp, 4096-8);
+	sm_debug(comp, "bottom sp=%p\n", sp, "i64*");
 
 	int nopclo = create_nop_closure (comp);
 	int printclo = create_print_closure (comp);
@@ -759,7 +773,9 @@ SmJit* sm_compile (const char* name, SmExpr* expr) {
 	COMMENT("visit root expression");
 	SmVar var = VISIT(expr);
 	COMMENT("push root expression");
-	SPFIN(sp, -1, var.id, "%closure*");
+	sp = SPFIN(sp, -1, var.id, "%closure*");
+	sm_debug(comp, "root expr %p\n", var.id, "%closure*");
+	sm_debug(comp, "sp=%p\n", sp, "i64*");
 
 	COMMENT("enter print");
 	ENTER(printclo);

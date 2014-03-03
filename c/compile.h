@@ -4,7 +4,11 @@
 #include "ast.h"
 #include "llvm.h"
 
-SmJit* sm_compile (const char* name, SmExpr* expr);
+typedef struct {
+	int debug;
+} SmCompileOpts;
+
+SmJit* sm_compile (SmCompileOpts opts, const char* name, SmExpr* expr);
 void sm_run (SmJit* mod);
 
 #endif

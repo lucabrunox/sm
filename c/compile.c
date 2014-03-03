@@ -194,18 +194,10 @@ static int begin_closure_func (SmCompile* comp, int closureid) {
 	return closure;
 }
 
-static void begin_thunk_func (SmCompile* comp, int closureid) {
-	begin_closure_func (comp, closureid);
-}
-
 static void end_closure_func (SmCompile* comp) {
 	GET_CODE;
 	END_FUNC;
 	POP_BLOCK;
-}
-
-static void end_thunk_func (SmCompile* comp) {
-	end_closure_func (comp);
 }
 
 static int create_closure (SmCompile* comp, int closureid) {
@@ -252,10 +244,6 @@ static int create_closure (SmCompile* comp, int closureid) {
 	}
 
 	return closure;
-}
-
-static int create_thunk (SmCompile* comp, int thunkid) {
-	return create_closure (comp, thunkid);
 }
 
 static long long unsigned int tagmap[] = {
@@ -523,7 +511,7 @@ DEFUNC(compile_literal, SmLiteral) {
 
 		int thunkid = comp->next_closureid++;
 		// expression code
-		begin_thunk_func (comp, thunkid);
+		begin_closure_func (comp, thunkid);
 		NOTEMPS;
 		COMMENT("string thunk code for '%s' string", expr->str);
 		int sp = LOADSP;
@@ -539,11 +527,11 @@ DEFUNC(compile_literal, SmLiteral) {
 		sm_debug(comp, "enter %p\n", cont, "%closure*");
 		ENTER(cont);
 		BACKTEMPS;
-		end_thunk_func (comp);
+		end_closure_func (comp);
 
 		// build thunk
 		COMMENT("create string thunk");
-		int thunk = create_thunk (comp, thunkid);
+		int thunk = create_closure (comp, thunkid);
 		RETVAL(id=thunk, isthunk=TRUE, type=TYPE_STR);
 	} else {
 		// TODO: 
@@ -593,7 +581,7 @@ DEFUNC(compile_call_expr, SmCallExpr) {
 	GET_CODE;
 	
 	int thunkid = comp->next_closureid++;
-	begin_thunk_func (comp, thunkid);
+	begin_closure_func (comp, thunkid);
 	NOTEMPS;
 	COMMENT("call thunk func");
 	int sp = LOADSP;
@@ -610,11 +598,11 @@ DEFUNC(compile_call_expr, SmCallExpr) {
 	ENTER(func.id);
 	
 	BACKTEMPS;
-	end_thunk_func (comp);
+	end_closure_func (comp);
 	
 	// build thunk
 	COMMENT("create call thunk");
-	int thunk = create_thunk (comp, thunkid);
+	int thunk = create_closure (comp, thunkid);
 	RETVAL(id=thunk, isthunk=TRUE, type=TYPE_UNK);
 }
 
@@ -648,7 +636,7 @@ static int create_nop_closure (SmCompile* comp) {
 	end_closure_func (comp);
 	COMMENT("nop closure");
 	
-	int nopclo = create_thunk (comp, nopid);
+	int nopclo = create_closure (comp, nopid);
 	return nopclo;
 }
 
@@ -708,7 +696,7 @@ static int create_print_closure (SmCompile* comp) {
 	end_closure_func (comp);
 
 	COMMENT("create print closure");
-	int printclo = create_thunk (comp, printid);
+	int printclo = create_closure (comp, printid);
 	return printclo;
 }
 

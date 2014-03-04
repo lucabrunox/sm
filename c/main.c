@@ -7,7 +7,7 @@
 #include "lexer.h"
 #include "parser.h"
 #include "astdumper.h"
-#include "compile.h"
+#include "codegen.h"
 
 int main() {		
 	SmLexer lexer;
@@ -24,7 +24,7 @@ int main() {
 		free (dump);
 		sm_parser_free (parser);
 
-		SmCompileOpts opts = { .debug=FALSE };
+		SmCodegenOpts opts = { .debug=FALSE };
 		SmJit* mod = sm_compile (opts, "<stdin>", expr);
 		if (mod) {
 			/* sm_jit_dump_asm (mod); */

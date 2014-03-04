@@ -263,7 +263,7 @@ static int create_prim_print (SmCodegen* gen) {
 	return directclo;
 }
 
-static int create_print_closure (SmCodegen* gen) {
+static int create_print_call (SmCodegen* gen) {
 	static int printclo = -1;
 	if (printclo >= 0) {
 		return printclo;
@@ -292,6 +292,44 @@ static int create_print_closure (SmCodegen* gen) {
 	COMMENT("create print closure");
 	printclo = sm_codegen_create_closure (gen, printid, -1);
 	return printclo;
+}
+
+static int create_prim_binary (SmCodegen* gen, const char* op) {
+	// FIXME: create fixed binary closures
+	
+	GET_CODE;
+	
+	int closureid = sm_codegen_begin_closure_func (gen);
+	COMMENT("binary %s func", op);
+	int sp = LOADSP;
+	RUNDBG("-> prim binary, sp=%p\n", sp, "i64*");
+
+	COMMENT("right op");
+	int right = SPGET(sp, 0, NULL);
+	COMMENT("left op");
+	int left = SPGET(sp, 1, NULL);
+	COMMENT("get cont");
+	int cont = SPGET(sp, 2, "%closure*");
+
+	int result;
+	if (!strcmp (op, "<")) {
+		result = EMIT("icmp slt i64 %%%d, %%%d", left, right);
+		result = EMIT("zext i1 %%%d to i64", result);
+		result = EMIT("or i64 %%%d, %llu", result, TAG_OBJ);
+	} else {
+		assert(FALSE);
+	}
+	
+	COMMENT("set result");
+	FINSP(sp, 2, result, NULL);
+
+	RUNDBG("enter cont %p\n", cont, "%closure*");
+	ENTER(cont);
+	sm_codegen_end_closure_func (gen);
+
+	COMMENT("create binary prim for %s", op);
+	int closure = sm_codegen_create_closure (gen, closureid, -1);
+	return closure;
 }
 
 DEFUNC(compile_member_expr, SmMemberExpr) {
@@ -603,6 +641,55 @@ DEFUNC(compile_call_expr, SmCallExpr) {
 	RETVAL(id=closure, isthunk=TRUE, type=TYPE_UNK);
 }
 
+DEFUNC(compile_binary_expr, SmBinaryExpr) {
+	GET_CODE;
+
+	// eval left closure
+	int evaleft = sm_codegen_begin_closure_func (gen);
+	COMMENT("eval right op %s thunk func", expr->op);
+	int sp = LOADSP;
+	RUNDBG("-> right op thunk, sp=%p\n", sp, "i64*");
+	int left = SPGET(sp, 0, NULL);
+	int right = SPGET(sp, 1, "%closure*");
+
+	COMMENT("swap");
+	SPSET(sp, 1, left, NULL);
+	
+	COMMENT("create prim binary closure");
+	int prim = create_prim_binary (gen, expr->op);
+	SPSET(sp, 0, prim, "%closure*");
+
+	COMMENT("enter right");
+	RUNDBG("enter right %p", right, NULL);
+	ENTER(right);
+	sm_codegen_end_closure_func (gen);
+
+	// binary closure
+	int closureid = sm_codegen_begin_closure_func (gen);
+	sp = LOADSP;
+	
+	COMMENT("visit left");
+	SmVar leftvar = VISIT(expr->left);
+	COMMENT("visit right");
+	SmVar rightvar = VISIT(expr->right);
+	COMMENT("create eval left thunk");
+	int evalclo = sm_codegen_create_closure (gen, evaleft, -1);
+
+	SPSET(sp, -1, rightvar.id, "%closure*");
+	FINSP(sp, -2, evalclo, "%closure*");
+	
+	COMMENT("force left");
+	RUNDBG("enter %p\n", leftvar.id, "%closure*");
+	ENTER(leftvar.id);
+	
+	sm_codegen_end_closure_func (gen);
+	
+	// build thunk
+	COMMENT("create binary thunk");
+	int closure = sm_codegen_create_closure (gen, closureid, prealloc);
+	RETVAL(id=closure, isthunk=TRUE, type=TYPE_UNK);
+}
+
 #define CAST(x) (SmVar (*)(SmCodegen*, SmExpr*, int prealloc))(x)
 SmVar (*compile_table[])(SmCodegen*, SmExpr*, int prealloc) = {
 	[SM_MEMBER_EXPR] = CAST(compile_member_expr),
@@ -610,7 +697,8 @@ SmVar (*compile_table[])(SmCodegen*, SmExpr*, int prealloc) = {
 	[SM_STR_LITERAL] = CAST(compile_str_literal),
 	[SM_INT_LITERAL] = CAST(compile_int_literal),
 	[SM_FUNC_EXPR] = CAST(compile_func_expr),
-	[SM_CALL_EXPR] = CAST(compile_call_expr)
+	[SM_CALL_EXPR] = CAST(compile_call_expr),
+	[SM_BINARY_EXPR] = CAST(compile_binary_expr)
 };
 
 static SmVar call_compile_table (SmCodegen* gen, SmExpr* expr, int prealloc) {
@@ -683,7 +771,7 @@ SmJit* sm_compile (SmCodegenOpts opts, const char* name, SmExpr* expr) {
 	RUNDBG("bottom sp=%p\n", sp, "i64*");
 
 	int nopclo = create_nop_closure (gen);
-	int printclo = create_print_closure (gen);
+	int printclo = create_print_call (gen);
 	
 	SPSET(sp, 0, nopclo, "%closure*");
 

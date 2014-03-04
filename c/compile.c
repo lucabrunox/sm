@@ -41,7 +41,7 @@ typedef enum {
 	TYPE_INT,
 	TYPE_CHR,
 	TYPE_STR,
-	TYPE_NIL,
+	TYPE_BOOL,
 	TYPE_UNK // unknown at compile time
 } SmVarType;
 
@@ -60,8 +60,7 @@ static long long unsigned int tagmap[] = {
 	[TYPE_EOS] = 0,
 	[TYPE_INT] = TAG_INT,
 	[TYPE_CHR] = TAG_CHR,
-	[TYPE_STR] = TAG_STR,
-	[TYPE_NIL] = 0
+	[TYPE_STR] = TAG_STR
 };
 
 int try_var (SmCodegen* gen, SmVar var, SmVarType type) {
@@ -112,11 +111,185 @@ int try_var (SmCodegen* gen, SmVar var, SmVarType type) {
 	}
 }
 
+static int create_true_closure (SmCodegen* gen) {
+	static int trueclo = -1;
+	if (trueclo >= 0) {
+		return trueclo;
+	}
+
+	GET_CODE;
+	int closureid = sm_codegen_begin_closure_func (gen);
+	COMMENT("true closure");
+	int sp = LOADSP;
+	int cont = SPGET(sp, 0, "%closure*");
+	RUNDBG("-> true object, sp=%p\n", sp, "i64*");
+
+	COMMENT("set true object on the stack");
+	STORE("i64 %llu", "i64* %%%d", OBJ_TRUE, sp);
+	
+	COMMENT("enter cont");
+	ENTER(cont);
+	sm_codegen_end_closure_func (gen);
+	
+	trueclo = sm_codegen_create_closure (gen, closureid, -1);
+	return trueclo;
+}	
+
+static int create_false_closure (SmCodegen* gen) {
+	static int falseclo = -1;
+	if (falseclo >= 0) {
+		return falseclo;
+	}
+
+	GET_CODE;
+	int closureid = sm_codegen_begin_closure_func (gen);
+	COMMENT("false closure");
+	int sp = LOADSP;
+	int cont = SPGET(sp, 0, "%closure*");
+	RUNDBG("-> false object, sp=%p\n", sp, "i64*");
+
+	COMMENT("set false object on the stack");
+	STORE("i64 %llu", "i64* %%%d", OBJ_FALSE, sp);
+	
+	COMMENT("enter cont");
+	ENTER(cont);
+	sm_codegen_end_closure_func (gen);
+	
+	falseclo = sm_codegen_create_closure (gen, closureid, -1);
+	return falseclo;
+}
+
+static int create_prim_print (SmCodegen* gen) {
+	static int directclo = -1;
+	if (directclo >= 0) {
+		return directclo;
+	}
+	
+	GET_CODE;
+	
+	static int true_str = -1;
+	int true_len = strlen("true")+1;
+	if (true_str < 0) {
+		PUSH_BLOCK(sm_codegen_get_decls_block (gen));
+		true_str = sm_code_get_temp (code);
+		EMIT_ ("@.const%d = private constant [%d x i8] c\"true\\00\", align 8", true_str, true_len);
+		POP_BLOCK;
+	}
+	
+	static int false_str = -1;
+	int false_len = strlen("false")+1;
+	if (false_str < 0) {
+		PUSH_BLOCK(sm_codegen_get_decls_block (gen));
+		false_str = sm_code_get_temp (code);
+		EMIT_ ("@.const%d = private constant [%d x i8] c\"false\\00\", align 8", false_str, false_len);
+		POP_BLOCK;
+	}
+
+	static int unk_str = -1;
+	const char* unk_fmt = "unknown object type: %llu\n";
+	int unk_len = strlen(unk_fmt)+1;
+	if (unk_str < 0) {
+		PUSH_BLOCK(sm_codegen_get_decls_block (gen));
+		unk_str = sm_code_get_temp (code);
+		EMIT_ ("@.const%d = private constant [%d x i8] c\"%s\\00\", align 8", unk_str, unk_len, unk_fmt);
+		POP_BLOCK;
+	}
+	
+	int directid = sm_codegen_begin_closure_func (gen);
+	COMMENT("real print func");
+	int sp = LOADSP;
+	COMMENT("get string");
+	int object = SPGET(sp, 0, NULL);
+	RUNDBG("-> real print, object=%p\n", object, NULL);
+	RUNDBG("sp=%p\n", sp, "i64*");
+
+	COMMENT("get continuation");
+	int cont = SPGET(sp, 1, "%closure*");
+	RUNDBG("cont=%p\n", cont, "%closure*");
+
+	int tag = EMIT("and %%tagged %%%d, %llu", object, TAG_MASK);
+	SWITCH("i64 %%%d", "label %%unknown", "i64 %llu, label %%bstring i64 %llu, label %%bobject", tag, TAG_STR, TAG_OBJ);
+	
+	LABEL("bstring");
+	int ptr = EMIT("and %%tagged %%%d, %llu", object, OBJ_MASK);
+	ptr = TOPTR("i64 %%%d", "i8*", ptr),
+	RUNDBG("string=%p\n", ptr, "i8*");
+	CALL ("i32 (i8*, ...)* @printf(i8* %%%d)", ptr);
+	BR ("label %%continue");
+
+	LABEL("bobject");
+	SWITCH("i64 %%%d", "label %%unknown", "i64 %llu, label %%btrue i64 %llu, label %%bfalse", object, OBJ_TRUE, OBJ_FALSE);
+
+	LABEL("btrue");
+	ptr = BITCAST("[%d x i8]* @.const%d", "i8*", true_len, true_str);
+	CALL ("i32 (i8*, ...)* @printf(i8* %%%d)", ptr);
+	BR ("label %%continue");
+
+	LABEL("bfalse");
+	ptr = BITCAST("[%d x i8]* @.const%d", "i8*", false_len, false_str);
+	CALL ("i32 (i8*, ...)* @printf(i8* %%%d)", ptr);
+	BR ("label %%continue");
+	
+	LABEL("unknown");
+	ptr = BITCAST("[%d x i8]* @.const%d", "i8*", unk_len, unk_str);
+	CALL ("i32 (i8*, ...)* @printf(i8* %%%d, i64 %%%d)", ptr, tag);
+	RET("void");
+
+	LABEL("continue");
+	COMMENT("put object back in the stack");
+	FINSP(sp, 1, object, NULL);
+	RUNDBG("enter %p", cont, "%closure*");
+	ENTER(cont);
+	sm_codegen_end_closure_func (gen);
+
+	directclo = sm_codegen_create_closure (gen, directid, -1);
+	return directclo;
+}
+
+static int create_print_closure (SmCodegen* gen) {
+	static int printclo = -1;
+	if (printclo >= 0) {
+		return printclo;
+	}
+	
+	GET_CODE;
+	
+	int printid = sm_codegen_begin_closure_func (gen);
+	COMMENT("print closure func");
+	COMMENT("create direct closure");
+
+	int sp = LOADSP;
+	COMMENT("get string thunk");
+	int str = SPGET(sp, 0, "%closure*");
+	RUNDBG("-> print closure, sp=%p\n", sp, "i64*");
+
+	COMMENT("push direct print closure");
+	int direct = create_prim_print (gen);
+	FINSP(sp, 0, direct, "%closure*");
+
+	COMMENT("enter string");
+	RUNDBG("enter string %p\n", str, "%closure*");
+	ENTER(str);
+	sm_codegen_end_closure_func (gen);
+
+	COMMENT("create print closure");
+	printclo = sm_codegen_create_closure (gen, printid, -1);
+	return printclo;
+}
+
 DEFUNC(compile_member_expr, SmMemberExpr) {
 	GET_CODE;
 	if (expr->inner) {
 		printf("unsupported inner member\n");
 		exit(0);
+	}
+
+	if (!strcmp (expr->name, "true")) {
+		RETVAL(id=create_true_closure(gen), isthunk=TRUE, type=TYPE_BOOL);
+	}
+
+	if (!strcmp (expr->name, "false")) {
+		RETVAL(id=create_false_closure(gen), isthunk=TRUE, type=TYPE_BOOL);
 	}
 
 	int varid = sm_scope_lookup (sm_codegen_get_scope (gen), expr->name);
@@ -428,69 +601,6 @@ static int create_nop_closure (SmCodegen* gen) {
 	return nopclo;
 }
 
-static int create_prim_print (SmCodegen* gen) {
-	GET_CODE;
-	int directid = sm_codegen_begin_closure_func (gen);
-	COMMENT("real print func");
-	int sp = LOADSP;
-	COMMENT("get string");
-	int object = SPGET(sp, 0, NULL);
-	RUNDBG("-> real print, object=%p\n", object, "i64");
-	RUNDBG("sp=%p\n", sp, "i64*");
-
-	COMMENT("get continuation");
-	int cont = SPGET(sp, 1, "%closure*");
-	RUNDBG("cont=%p\n", cont, "%closure*");
-
-	int tag = EMIT("and %%tagged %%%d, %llu", object, TAG_MASK);
-	SWITCH("i64 %%%d", "label %%unknown", "i64 %llu, label %%string", tag, TAG_STR);
-	LABEL("string");
-	int ptr = EMIT("and %%tagged %%%d, %llu", object, OBJ_MASK);
-	ptr = TOPTR("i64 %%%d", "i8*", ptr),
-	RUNDBG("string=%p\n", ptr, "i8*");
-	CALL ("i32 (i8*, ...)* @printf(i8* %%%d)", ptr);
-	BR ("label %%continue");
-	
-	LABEL("unknown");
-	RET("void");
-
-	LABEL("continue");
-	COMMENT("put object back in the stack");
-	FINSP(sp, 1, object, NULL);
-	RUNDBG("enter %p", cont, "%closure*");
-	ENTER(cont);
-	sm_codegen_end_closure_func (gen);
-
-	int direct = sm_codegen_create_closure (gen, directid, -1);
-	return direct;
-}
-
-static int create_print_closure (SmCodegen* gen) {
-	GET_CODE;
-	
-	int printid = sm_codegen_begin_closure_func (gen);
-	COMMENT("print closure func");
-	COMMENT("create direct closure");
-
-	int sp = LOADSP;
-	COMMENT("get string thunk");
-	int str = SPGET(sp, 0, "%closure*");
-	RUNDBG("-> print closure, sp=%p\n", sp, "i64*");
-
-	COMMENT("push direct print closure");
-	int direct = create_prim_print (gen);
-	FINSP(sp, 0, direct, "%closure*");
-
-	COMMENT("enter string");
-	RUNDBG("enter string %p\n", str, "%closure*");
-	ENTER(str);
-	sm_codegen_end_closure_func (gen);
-
-	COMMENT("create print closure");
-	int printclo = sm_codegen_create_closure (gen, printid, -1);
-	return printclo;
-}
-
 SmJit* sm_compile (SmCodegenOpts opts, const char* name, SmExpr* expr) {
 	static int initialized = 0;
 	if (!initialized) {
@@ -557,7 +667,7 @@ SmJit* sm_compile (SmCodegenOpts opts, const char* name, SmExpr* expr) {
 	POP_BLOCK;
 
 	char* unit = sm_code_link (code);
-	/* puts(unit); */
+	puts(unit);
 	sm_code_unref (code);
 	
 	SmJit* mod = sm_jit_compile ("<stdin>", unit);

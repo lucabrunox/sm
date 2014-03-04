@@ -14,6 +14,21 @@ typedef enum {
 	SM_CALL_EXPR
 } SmExprType;
 
+typedef enum {
+	SM_AND_OP,
+	SM_OR_OP,
+	SM_ADD_OP,
+	SM_SUB_OP,
+	SM_DIV_OP,
+	SM_MUL_OP,
+	SM_EQ_OP,
+	SM_NEQ_OP,
+	SM_LT_OP,
+	SM_GT_OP,
+	SM_LE_OP,
+	SM_GE_OP
+} SmBinaryOp;
+
 typedef struct _SmExpr SmExpr;
 
 struct _SmExpr {
@@ -60,5 +75,12 @@ typedef struct {
 		char* str;
 	};
 } SmLiteral;
+
+typedef struct {
+	SmExpr base;
+	SmBinaryOp op;
+	SmExpr* left;
+	SmExpr* right;
+} SmBinaryExpr;
 
 #endif

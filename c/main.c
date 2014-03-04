@@ -13,7 +13,7 @@ int main() {
 	SmLexer lexer;
 	/* sm_lexer_init (&lexer, "id=x:x; id 'asd'"); */
 	/* sm_lexer_init (&lexer, "dsa='foo'; asd=(id = x: x; id); asd dsa"); */
-	sm_lexer_init (&lexer, "32 < 43");
+	sm_lexer_init (&lexer, "asd=32; dsa=32; asd == dsa");
 	/* sm_lexer_init (&lexer, "asd = 'foo\\n'; dsa = x: (we='bar\\n'; asd); dsa"); */
 	SmParser* parser = sm_parser_new ();
 	SmExpr* expr = sm_parser_parse (parser, lexer);

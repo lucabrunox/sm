@@ -104,6 +104,7 @@ int try_var (SmCodegen* gen, SmVar var, SmVarType type) {
 			object = TOPTR("%%tagged %%%d", "i8*", object);
 		} else if (type == TYPE_FUN) {
 			object = TOPTR("%%tagged %%%d", "%%closure*", object);
+		} else if (type == TYPE_INT || type == TYPE_BOOL) {
 		} else {
 			assert(FALSE);
 		}
@@ -311,14 +312,24 @@ static int create_prim_binary (SmCodegen* gen, const char* op) {
 	COMMENT("get cont");
 	int cont = SPGET(sp, 2, "%closure*");
 
-	int result;
-	if (!strcmp (op, "<")) {
-		result = EMIT("icmp slt i64 %%%d, %%%d", left, right);
-		result = EMIT("zext i1 %%%d to i64", result);
-		result = EMIT("or i64 %%%d, %llu", result, TAG_OBJ);
-	} else {
-		assert(FALSE);
-	}
+	#define CASE(x) (!strcmp(op, x))
+	const char* cmp;
+	if (CASE("<")) cmp = "slt";
+	else if (CASE(">")) cmp = "sgt";
+	else if (CASE("<=")) cmp = "sle";
+	else if (CASE(">=")) cmp = "sge";
+	else if (CASE("==")) cmp = "eq";
+	else if (CASE("!=")) cmp = "ne";
+	else assert(FALSE);
+
+	SmVar leftvar = { .id=left, .isthunk=FALSE, .type=TYPE_UNK };
+	SmVar rightvar = { .id=right, .isthunk=FALSE, .type=TYPE_UNK };
+	left = try_var (gen, leftvar, TYPE_INT);
+	right = try_var (gen, rightvar, TYPE_INT);
+	
+	int result = EMIT("icmp %s i64 %%%d, %%%d", cmp, left, right);
+	result = EMIT("zext i1 %%%d to i64", result);
+	result = EMIT("or i64 %%%d, %llu", result, TAG_OBJ);
 	
 	COMMENT("set result");
 	FINSP(sp, 2, result, NULL);

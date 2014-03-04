@@ -64,7 +64,7 @@ int try_var (SmCodegen* gen, SmVar var, SmVarType type) {
 	COMMENT("try %%%d, expect %d", var.id, type);
 	
 	int object = var.id;
-	RUNDBG("try var %p\n", object, "%tagged");
+	RUNDBG("try var %p\n", object, NULL);
 	if (var.type != TYPE_UNK) {
 		if (var.type != type) {
 			printf ("compile-time expected %d, got %d\n", type, var.type);
@@ -340,7 +340,7 @@ static int create_real_call_closure (SmCodegen* gen, SmCallExpr* expr) {
 
 	int sp = LOADSP;
 	COMMENT("get func");
-	int func = SPGET(sp, 0, "%tagged");
+	int func = SPGET(sp, 0, NULL);
 	RUNDBG("-> real call, sp=%p\n", sp, "i64*");
 
 	SmVar funcvar = { .id=func, .isthunk=FALSE, .type=TYPE_UNK };

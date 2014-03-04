@@ -7,7 +7,7 @@
 #include "lexer.h"
 #include "parser.h"
 #include "astdumper.h"
-#include "codegen.h"
+#include "compile.h"
 
 int main() {		
 	SmLexer lexer;

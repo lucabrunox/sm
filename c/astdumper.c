@@ -130,6 +130,17 @@ static char* dump_binary_expr (SmBinaryExpr* expr) {
 	return res;
 }
 
+static char* dump_cond_expr (SmCondExpr* expr) {
+	char* cond = sm_ast_dump (expr->cond);
+	char* truebody = sm_ast_dump (expr->truebody);
+	char* falsebody = sm_ast_dump (expr->falsebody);
+	char* res = str("(if %s then %s else %s)", cond, truebody, falsebody);
+	free (cond);
+	free (truebody);
+	free (falsebody);
+	return res;
+}
+
 #define CAST(x) (char* (*)(SmExpr*))(x)
 char* (*dump_table[])(SmExpr*) = {
 	[SM_MEMBER_EXPR] = CAST(dump_member_expr),
@@ -139,7 +150,8 @@ char* (*dump_table[])(SmExpr*) = {
 	[SM_INT_LITERAL] = CAST(dump_literal),
 	[SM_FUNC_EXPR] = CAST(dump_func_expr),
 	[SM_CALL_EXPR] = CAST(dump_call_expr),
-	[SM_BINARY_EXPR] = CAST(dump_binary_expr)
+	[SM_BINARY_EXPR] = CAST(dump_binary_expr),
+	[SM_COND_EXPR] = CAST(dump_cond_expr)
 };
 
 char* sm_ast_dump (SmExpr* expr) {

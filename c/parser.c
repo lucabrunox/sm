@@ -33,6 +33,7 @@ void sm_parser_free (SmParser* parser) {
 #define ACCEPT(x) ((CASE(x)) ? (NEXT, 1) : 0)
 #define ACCEPT_ID(x) ((CASE("id")) ? (!strcmp(STR, x) ? (NEXT, 1) : 0) : 0)
 #define SKIP(x) EXPECT(x); NEXT;
+#define SKIP_ID(x) EXPECT("id"); if (strcmp(STR, x)) { printf("expected " x ", got %s\n", STR); return NULL; } else { NEXT; }
 #define STR (CUR.str)
 #define NEW(n,x,t) x* n = g_new0(x, 1); (n)->base.type=t
 #define SAVE (*parser)
@@ -103,6 +104,9 @@ FUNC(call) {
 		if (!CASE("id") && !CASE("(") && !CASE("[") && !CASE("{")) {
 			break;
 		}
+		if (CASE("id") && (CASESTR("if") || CASESTR("then") || CASESTR("else"))) {
+			break;
+		}
 		SmExpr* arg = primary(parser);
 		CHECK(arg);
 		g_ptr_array_add (args, arg);
@@ -144,6 +148,34 @@ FUNC(binary) {
 	return left;
 }
 
+FUNC(cond) {
+	if (ACCEPT_ID("if")) {
+		SmExpr* condexpr = binary(parser);
+		CHECK(condexpr);
+
+		SKIP_ID("then");
+		SmExpr* truebody = binary(parser);
+		CHECK(truebody);
+
+		SKIP_ID("else");
+		SmExpr* falsebody = cond(parser);
+		CHECK(falsebody);
+
+		NEW(expr, SmCondExpr, SM_COND_EXPR);
+		expr->cond = condexpr;
+		expr->truebody = truebody;
+		expr->falsebody = falsebody;
+		condexpr->parent = EXPR(expr);
+		truebody->parent = EXPR(expr);
+		falsebody->parent = EXPR(expr);
+		
+		return EXPR(expr);
+	}
+		
+	return binary(parser);
+}
+		
+
 FUNC2(function, int allow_seq) {
 	SmParser begin = SAVE;
 	if (CASE("id")) {
@@ -155,7 +187,7 @@ FUNC2(function, int allow_seq) {
 				if (allow_seq) {
 					body = seq(parser);
 				} else {
-					body = binary(parser);
+					body = cond(parser);
 				}
 				CHECK(body);
 				if (body->type != SM_SEQ_EXPR) {
@@ -180,7 +212,7 @@ FUNC2(function, int allow_seq) {
 		}
 	}
 
-	return binary(parser);
+	return cond(parser);
 }
 
 FUNC(assign) {
@@ -216,7 +248,7 @@ FUNC(assign) {
 		RESTORE(begin);
 	}
 
-	return binary(parser);
+	return cond(parser);
 }
 
 FUNC(seq) {

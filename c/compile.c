@@ -56,7 +56,7 @@ static SmVar call_compile_table (SmCodegen* gen, SmExpr* expr, int prealloc);
 static long long unsigned int tagmap[] = {
 	[TYPE_FUN] = TAG_FUN,
 	[TYPE_LST] = TAG_LST,
-	[TYPE_EOS] = 0,
+	[TYPE_EOS] = TAG_OBJ,
 	[TYPE_INT] = TAG_INT,
 	[TYPE_CHR] = TAG_CHR,
 	[TYPE_STR] = TAG_STR,
@@ -104,7 +104,7 @@ int try_var (SmCodegen* gen, SmVar var, SmVarType type) {
 			object = TOPTR("%%tagged %%%d", "i8*", object);
 		} else if (type == TYPE_FUN) {
 			object = TOPTR("%%tagged %%%d", "%%closure*", object);
-		} else if (type == TYPE_INT) {
+		} else if (type == TYPE_INT || type == TYPE_EOS) {
 		} else if (type == TYPE_BOOL) {
 			object = EMIT("trunc i64 %%%d to i1", object);
 		} else {
@@ -162,6 +162,30 @@ static int create_false_closure (SmCodegen* gen) {
 	return falseclo;
 }
 
+static int create_eos_closure (SmCodegen* gen) {
+	static int eosclo = -1;
+	if (eosclo >= 0) {
+		return eosclo;
+	}
+
+	GET_CODE;
+	int closureid = sm_codegen_begin_closure_func (gen);
+	COMMENT("eos closure");
+	int sp = LOADSP;
+	int cont = SPGET(sp, 0, "%closure*");
+	RUNDBG("-> eos object, sp=%p\n", sp, "i64*");
+
+	COMMENT("set eos object on the stack");
+	STORE("i64 %llu", "i64* %%%d", OBJ_EOS, sp);
+	
+	COMMENT("enter cont");
+	ENTER(cont);
+	sm_codegen_end_closure_func (gen);
+	
+	eosclo = sm_codegen_create_closure (gen, closureid, -1);
+	return eosclo;
+}
+
 static int create_prim_print (SmCodegen* gen) {
 	static int directclo = -1;
 	if (directclo >= 0) {
@@ -185,6 +209,15 @@ static int create_prim_print (SmCodegen* gen) {
 		PUSH_BLOCK(sm_codegen_get_decls_block (gen));
 		false_str = sm_code_get_temp (code);
 		EMIT_ ("@.const%d = private constant [%d x i8] c\"false\\00\", align 8", false_str, false_len);
+		POP_BLOCK;
+	}
+
+	static int eos_str = -1;
+	int eos_len = strlen("eos")+1;
+	if (eos_str < 0) {
+		PUSH_BLOCK(sm_codegen_get_decls_block (gen));
+		eos_str = sm_code_get_temp (code);
+		EMIT_ ("@.const%d = private constant [%d x i8] c\"eos\\00\", align 8", eos_str, eos_len);
 		POP_BLOCK;
 	}
 
@@ -238,7 +271,8 @@ static int create_prim_print (SmCodegen* gen) {
 	BR ("label %%continue");
 
 	LABEL("bobject");
-	SWITCH("i64 %%%d", "label %%unknown", "i64 %llu, label %%btrue i64 %llu, label %%bfalse", object, OBJ_TRUE, OBJ_FALSE);
+	SWITCH("i64 %%%d", "label %%unknown", "i64 %llu, label %%btrue i64 %llu, label %%bfalse i64 %llu, label %%beos",
+		   object, OBJ_TRUE, OBJ_FALSE, OBJ_EOS);
 
 	LABEL("btrue");
 	ptr = BITCAST("[%d x i8]* @.const%d", "i8*", true_len, true_str);
@@ -249,7 +283,12 @@ static int create_prim_print (SmCodegen* gen) {
 	ptr = BITCAST("[%d x i8]* @.const%d", "i8*", false_len, false_str);
 	CALL ("i32 (i8*, ...)* @printf(i8* %%%d)", ptr);
 	BR ("label %%continue");
-	
+
+	LABEL("beos");
+	ptr = BITCAST("[%d x i8]* @.const%d", "i8*", eos_len, eos_str);
+	CALL ("i32 (i8*, ...)* @printf(i8* %%%d)", ptr);
+	BR ("label %%continue");
+
 	LABEL("unknown");
 	ptr = BITCAST("[%d x i8]* @.const%d", "i8*", unk_len, unk_str);
 	CALL ("i32 (i8*, ...)* @printf(i8* %%%d, i64 %%%d)", ptr, tag);
@@ -397,6 +436,10 @@ DEFUNC(compile_member_expr, SmMemberExpr) {
 
 	if (!strcmp (expr->name, "false")) {
 		RETVAL(id=create_false_closure(gen), isthunk=TRUE, type=TYPE_BOOL);
+	}
+
+	if (!strcmp (expr->name, "eos")) {
+		RETVAL(id=create_eos_closure(gen), isthunk=TRUE, type=TYPE_EOS);
 	}
 
 	int varid = sm_scope_lookup (sm_codegen_get_scope (gen), expr->name);

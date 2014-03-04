@@ -185,6 +185,15 @@ static int create_prim_print (SmCodegen* gen) {
 		POP_BLOCK;
 	}
 
+	static int int_str = -1;
+	int int_len = strlen("%llu")+1;
+	if (int_str < 0) {
+		PUSH_BLOCK(sm_codegen_get_decls_block (gen));
+		int_str = sm_code_get_temp (code);
+		EMIT_ ("@.const%d = private constant [%d x i8] c\"%%llu\\00\", align 8", int_str, int_len);
+		POP_BLOCK;
+	}
+
 	static int unk_str = -1;
 	const char* unk_fmt = "unknown object type: %llu\n";
 	int unk_len = strlen(unk_fmt)+1;
@@ -208,10 +217,18 @@ static int create_prim_print (SmCodegen* gen) {
 	RUNDBG("cont=%p\n", cont, "%closure*");
 
 	int tag = EMIT("and %%tagged %%%d, %llu", object, TAG_MASK);
-	SWITCH("i64 %%%d", "label %%unknown", "i64 %llu, label %%bstring i64 %llu, label %%bobject", tag, TAG_STR, TAG_OBJ);
+	SWITCH("i64 %%%d", "label %%unknown", "i64 %llu, label %%bint i64 %llu, label %%bstring i64 %llu, label %%bobject",
+		   tag, TAG_INT, TAG_STR, TAG_OBJ);
+
+	LABEL("bint");
+	int ptr = BITCAST("[%d x i8]* @.const%d", "i8*", int_len, int_str);
+	int num = EMIT("and %%tagged %%%d, %llu", object, OBJ_MASK);
+	RUNDBG("int=%llu\n", ptr, NULL);
+	CALL ("i32 (i8*, ...)* @printf(i8* %%%d, i64 %%%d)", ptr, num);
+	BR ("label %%continue");
 	
 	LABEL("bstring");
-	int ptr = EMIT("and %%tagged %%%d, %llu", object, OBJ_MASK);
+	ptr = EMIT("and %%tagged %%%d, %llu", object, OBJ_MASK);
 	ptr = TOPTR("i64 %%%d", "i8*", ptr),
 	RUNDBG("string=%p\n", ptr, "i8*");
 	CALL ("i32 (i8*, ...)* @printf(i8* %%%d)", ptr);
@@ -469,45 +486,61 @@ DEFUNC(compile_func_expr, SmFuncExpr) {
 	RETVAL(id=closure, isthunk=TRUE, type=TYPE_FUN);
 }
 
-DEFUNC(compile_literal, SmLiteral) {
+DEFUNC(compile_int_literal, SmLiteral) {
 	GET_CODE;
-	if (expr->str) {
-		// define constant string
-		// FIXME: do not create a thunk
-		
-		PUSH_BLOCK(sm_codegen_get_decls_block (gen));
-		int consttmp = sm_code_get_temp (code);
-		int len = strlen(expr->str)+1;
-		// FIXME:
-		EMIT_ ("@.const%d = private constant [%d x i8] c\"%s\\00\", align 8", consttmp, len, expr->str);
-		POP_BLOCK;
+	// FIXME: do not create a thunk
 
-		// expression code
-		int closureid = sm_codegen_begin_closure_func (gen);
-		COMMENT("string thunk code for '%s' string", expr->str);
-		int sp = LOADSP;
-		RUNDBG("-> literal, sp=%p\n", sp, "i64*");
-		
-		int cont = SPGET(sp, 0, "%closure*");
-		int obj = GETPTR("[%d x i8]* @.const%d, i32 0, i32 0", len, consttmp);
-		obj = EMIT ("ptrtoint i8* %%%d to %%tagged", obj);
-		/* obj = EMIT ("lshr exact %%tagged %%%d, 3", obj); */
-		obj = EMIT ("or %%tagged %%%d, %llu", obj, TAG_STR);
-		SPSET(sp, 0, obj, NULL);
+	int closureid = sm_codegen_begin_closure_func (gen);
+	COMMENT("int thunk code for %d\n", expr->intval);
+	int sp = LOADSP;
+	RUNDBG("-> int literal, sp=%p\n", sp, "i64*");
+	
+	int cont = SPGET(sp, 0, "%closure*");
+	STORE("i64 %llu", "i64* %%%d", TAG_INT|expr->intval, sp);
+	
+	RUNDBG("enter %p\n", cont, "%closure*");
+	ENTER(cont);
+	sm_codegen_end_closure_func (gen);
+	
+	// build thunk
+	COMMENT("create string thunk");
+	int closure = sm_codegen_create_closure (gen, closureid, prealloc);
+	RETVAL(id=closure, isthunk=TRUE, type=TYPE_STR);
+}
 
-		RUNDBG("enter %p\n", cont, "%closure*");
-		ENTER(cont);
-		sm_codegen_end_closure_func (gen);
-
-		// build thunk
-		COMMENT("create string thunk");
-		int closure = sm_codegen_create_closure (gen, closureid, prealloc);
-		RETVAL(id=closure, isthunk=TRUE, type=TYPE_STR);
-	} else {
-		// TODO: 
-		printf("only string literals supported\n");
-		exit(0);
-	}
+DEFUNC(compile_str_literal, SmLiteral) {
+	GET_CODE;
+	// define constant string
+	// FIXME: do not create a thunk
+	
+	PUSH_BLOCK(sm_codegen_get_decls_block (gen));
+	int consttmp = sm_code_get_temp (code);
+	int len = strlen(expr->str)+1;
+// FIXME:
+	EMIT_ ("@.const%d = private constant [%d x i8] c\"%s\\00\", align 8", consttmp, len, expr->str);
+	POP_BLOCK;
+	
+	// expression code
+	int closureid = sm_codegen_begin_closure_func (gen);
+	COMMENT("string thunk code for '%s' string", expr->str);
+	int sp = LOADSP;
+	RUNDBG("-> string literal, sp=%p\n", sp, "i64*");
+	
+	int cont = SPGET(sp, 0, "%closure*");
+	int obj = GETPTR("[%d x i8]* @.const%d, i32 0, i32 0", len, consttmp);
+	obj = EMIT ("ptrtoint i8* %%%d to %%tagged", obj);
+	/* obj = EMIT ("lshr exact %%tagged %%%d, 3", obj); */
+	obj = EMIT ("or %%tagged %%%d, %llu", obj, TAG_STR);
+	SPSET(sp, 0, obj, NULL);
+	
+	RUNDBG("enter %p\n", cont, "%closure*");
+	ENTER(cont);
+	sm_codegen_end_closure_func (gen);
+	
+	// build thunk
+	COMMENT("create string thunk");
+	int closure = sm_codegen_create_closure (gen, closureid, prealloc);
+	RETVAL(id=closure, isthunk=TRUE, type=TYPE_STR);
 }
 
 static int create_real_call_closure (SmCodegen* gen, SmCallExpr* expr) {
@@ -574,7 +607,8 @@ DEFUNC(compile_call_expr, SmCallExpr) {
 SmVar (*compile_table[])(SmCodegen*, SmExpr*, int prealloc) = {
 	[SM_MEMBER_EXPR] = CAST(compile_member_expr),
 	[SM_SEQ_EXPR] = CAST(compile_seq_expr),
-	[SM_LITERAL] = CAST(compile_literal),
+	[SM_STR_LITERAL] = CAST(compile_str_literal),
+	[SM_INT_LITERAL] = CAST(compile_int_literal),
 	[SM_FUNC_EXPR] = CAST(compile_func_expr),
 	[SM_CALL_EXPR] = CAST(compile_call_expr)
 };

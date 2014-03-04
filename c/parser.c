@@ -23,16 +23,17 @@ void sm_parser_free (SmParser* parser) {
 	g_free (parser);
 }
 
-#define NEXT (sm_token_destroy(&parser->cur), parser->cur = sm_lexer_next(&parser->lexer))
-#define PTOK puts(parser->cur.type)
+#define NEXT (sm_token_destroy(&CUR), CUR = sm_lexer_next(&parser->lexer))
+#define CUR (parser->cur)
+#define PTOK puts(CUR.type)
 #define FUNC(n) static SmExpr* n (SmParser* parser)
 #define FUNC2(n,x) static SmExpr* n (SmParser* parser, x)
-#define TYPE (parser->cur.type)
+#define TYPE (CUR.type)
 #define EXPECT(x) if (!CASE(x)) { printf("expected " x ", got %s\n", TYPE); return NULL; }
 #define ACCEPT(x) ((CASE(x)) ? (NEXT, 1) : 0)
 #define ACCEPT_ID(x) ((CASE("id")) ? (!strcmp(STR, x) ? (NEXT, 1) : 0) : 0)
 #define SKIP(x) EXPECT(x); NEXT;
-#define STR (parser->cur.str)
+#define STR (CUR.str)
 #define NEW(n,x,t) x* n = g_new0(x, 1); (n)->base.type=t
 #define SAVE (*parser)
 #define RESTORE(x) parser->lexer=x.cur.start; NEXT
@@ -68,8 +69,14 @@ FUNC(primary) {
 	if (CASE("id")) {
 		expr = member(parser, NULL);
 	} else if (CASE("str")) {
-		NEW(tmp, SmLiteral, SM_LITERAL);
+		NEW(tmp, SmLiteral, SM_STR_LITERAL);
 		tmp->str = STR;
+		STR=NULL;
+		NEXT;
+		expr = EXPR(tmp);
+	} else if (CASE("int")) {
+		NEW(tmp, SmLiteral, SM_INT_LITERAL);
+		tmp->intval = CUR.intval;
 		STR=NULL;
 		NEXT;
 		expr = EXPR(tmp);
@@ -113,6 +120,28 @@ FUNC(call) {
 	}
 }
 
+FUNC(binary) {
+	SmExpr* left = call(parser);
+	CHECK(left);
+	
+	if (CASE("<") || CASE("<=") || CASE(">") || CASE(">=") || CASE("==") || CASE("!=") || CASE("and") || CASE("or") ||
+		CASE("+") || CASE("-") || CASE("*") || CASE("/") || CASE("**") || CASE("//")) {
+		NEW(bin, SmBinaryExpr, SM_BINARY_EXPR);
+		bin->op = STR;
+		STR = NULL;
+		bin->left = left;
+		left->parent = EXPR(bin);
+		
+		SmExpr* right = binary(parser);
+		CHECK(right);
+		
+		bin->right = right;
+		right->parent = EXPR(bin);
+		return EXPR(bin);
+	}
+	return left;
+}
+
 FUNC2(function, int allow_seq) {
 	SmParser begin = SAVE;
 	if (CASE("id")) {
@@ -124,7 +153,7 @@ FUNC2(function, int allow_seq) {
 				if (allow_seq) {
 					body = seq(parser);
 				} else {
-					body = call(parser);
+					body = binary(parser);
 				}
 				CHECK(body);
 				if (body->type != SM_SEQ_EXPR) {
@@ -149,7 +178,7 @@ FUNC2(function, int allow_seq) {
 		}
 	}
 
-	return call(parser);
+	return binary(parser);
 }
 
 FUNC(assign) {
@@ -185,7 +214,7 @@ FUNC(assign) {
 		RESTORE(begin);
 	}
 
-	return call(parser);
+	return binary(parser);
 }
 
 FUNC(seq) {

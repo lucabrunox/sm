@@ -9,25 +9,13 @@ typedef enum {
 	SM_MEMBER_EXPR,
 	SM_SEQ_EXPR,
 	SM_ASSIGN_EXPR,
-	SM_LITERAL,
+	SM_STR_LITERAL,
+	SM_INT_LITERAL,
+	SM_DBL_LITERAL,
 	SM_FUNC_EXPR,
-	SM_CALL_EXPR
+	SM_CALL_EXPR,
+	SM_BINARY_EXPR
 } SmExprType;
-
-typedef enum {
-	SM_AND_OP,
-	SM_OR_OP,
-	SM_ADD_OP,
-	SM_SUB_OP,
-	SM_DIV_OP,
-	SM_MUL_OP,
-	SM_EQ_OP,
-	SM_NEQ_OP,
-	SM_LT_OP,
-	SM_GT_OP,
-	SM_LE_OP,
-	SM_GE_OP
-} SmBinaryOp;
 
 typedef struct _SmExpr SmExpr;
 
@@ -71,14 +59,15 @@ typedef struct {
 typedef struct {
 	SmExpr base;
 	union {
-		double num;
+		double dblval;
+		int intval;
 		char* str;
 	};
 } SmLiteral;
 
 typedef struct {
 	SmExpr base;
-	SmBinaryOp op;
+	const char* op;
 	SmExpr* left;
 	SmExpr* right;
 } SmBinaryExpr;

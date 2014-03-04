@@ -58,13 +58,13 @@ SmToken sm_lexer_next (SmLexer* lexer) {
 	}
 
 	if (isdigit (c)) {
-		double val = 0;
+		int val = 0;
 		while (isdigit (PEEK)) {
 			val *= 10;
 			val += READ-'0';
 		}
-		SmToken t = { .start=start, .type="num" };
-		t.num=val;
+		SmToken t = { .start=start, .type="int" };
+		t.intval=val;
 		return t;
 	}
 

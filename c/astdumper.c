@@ -30,11 +30,11 @@ static char* dump_member_expr (SmMemberExpr* expr) {
 
 static char* dump_literal (SmLiteral* expr) {
 	char* res = NULL;
-	if (expr->str) {
+	if (expr->base.type == SM_STR_LITERAL) {
 		// TODO: quote
 		asprintf(&res, "\"%s\"", expr->str);
-	} else {
-		asprintf(&res, "%g", expr->num);
+	} else if (expr->base.type == SM_INT_LITERAL) {
+		asprintf(&res, "%d", expr->intval);
 	}
 	return res;
 }
@@ -126,7 +126,8 @@ char* (*dump_table[])(SmExpr*) = {
 	[SM_MEMBER_EXPR] = CAST(dump_member_expr),
 	[SM_SEQ_EXPR] = CAST(dump_seq_expr),
 	[SM_ASSIGN_EXPR] = CAST(dump_assign_expr),
-	[SM_LITERAL] = CAST(dump_literal),
+	[SM_STR_LITERAL] = CAST(dump_literal),
+	[SM_INT_LITERAL] = CAST(dump_literal),
 	[SM_FUNC_EXPR] = CAST(dump_func_expr),
 	[SM_CALL_EXPR] = CAST(dump_call_expr)
 };

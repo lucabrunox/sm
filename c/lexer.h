@@ -13,7 +13,8 @@ typedef struct {
 	SmLexer start;
 	const char *type;
 	union {
-		double num;
+		double dblval;
+		int intval;
 		char *str;
 	};
 } SmToken;

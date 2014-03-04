@@ -6,7 +6,6 @@
 #include "code.h"
 #include "lexer.h"
 #include "parser.h"
-#include "astdumper.h"
 #include "compile.h"
 
 int main() {		

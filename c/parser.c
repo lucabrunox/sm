@@ -6,7 +6,6 @@
 #include "lexer.h"
 #include "parser.h"
 #include "ast.h"
-#include "astdumper.h"
 
 struct _SmParser {
 	SmLexer lexer;

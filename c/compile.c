@@ -10,7 +10,6 @@
 #include "ast.h"
 #include "llvm.h"
 #include "code.h"
-#include "astdumper.h"
 #include "scope.h"
 
 #define DEFUNC(n,x) static SmVar n (SmCodegen* gen, x* expr, int prealloc)

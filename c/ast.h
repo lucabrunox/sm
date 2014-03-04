@@ -25,6 +25,9 @@ struct _SmExpr {
 	SmExpr* parent;
 };
 
+char* sm_ast_dump (SmExpr* expr);
+
+
 typedef struct {
 	SmExpr base;
 	SmExpr* inner;

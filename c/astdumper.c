@@ -6,7 +6,6 @@
 #include <glib.h>
 
 #include "ast.h"
-#include "astdumper.h"
 
 static char* str(const char* fmt, ...) {
 	va_list ap;

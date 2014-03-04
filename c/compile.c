@@ -114,9 +114,7 @@ DEFUNC(compile_member_expr, SmMemberExpr) {
 		exit(0);
 	}
 
-	printf("member %p\n", sm_codegen_get_scope(gen));
 	int varid = sm_scope_lookup (sm_codegen_get_scope (gen), expr->name);
-	printf("member %p\n", sm_codegen_get_scope(gen));
 	if (varid < 0) {
 		printf("not in scope %s\n", expr->name);
 		exit(0);
@@ -545,7 +543,7 @@ SmJit* sm_compile (SmCodegenOpts opts, const char* name, SmExpr* expr) {
 	POP_BLOCK;
 
 	char* unit = sm_code_link (code);
-	puts(unit);
+	/* puts(unit); */
 	sm_code_unref (code);
 	
 	SmJit* mod = sm_jit_compile ("<stdin>", unit);

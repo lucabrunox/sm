@@ -40,14 +40,11 @@ int sm_scope_get_size (SmScope* scope) {
 	if (!scope) {
 		return 0;
 	}
-	printf("scope %p\n", scope);
 	int size = sm_scope_get_local_size (scope);
-	printf("aftscope %p %p\n", scope, scope->parent);
 	return sm_scope_get_size (scope->parent)+size;
 }
 
 int sm_scope_lookup (SmScope* scope, const char* name) {
-	printf("we\n");
 	while (scope) {
 		int64_t id;
 		if (g_hash_table_lookup_extended (scope->map, (gpointer)name, NULL, (gpointer*)&id)) {
@@ -55,6 +52,5 @@ int sm_scope_lookup (SmScope* scope, const char* name) {
 		}
 		scope = scope->parent;
 	}
-	printf("fin\n");
 	return -1;
 }

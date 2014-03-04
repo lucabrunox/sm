@@ -235,6 +235,5 @@ void sm_codegen_debug (SmCodegen* gen, const char* fmt, int var, const char* cas
 }
 
 void sm_codegen_set_scope (SmCodegen* gen, SmScope* scope) {
-	printf("set %p\n", scope);
 	gen->scope = scope;
 }

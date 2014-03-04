@@ -59,7 +59,8 @@ static long long unsigned int tagmap[] = {
 	[TYPE_EOS] = 0,
 	[TYPE_INT] = TAG_INT,
 	[TYPE_CHR] = TAG_CHR,
-	[TYPE_STR] = TAG_STR
+	[TYPE_STR] = TAG_STR,
+	[TYPE_BOOL] = TAG_OBJ
 };
 
 int try_var (SmCodegen* gen, SmVar var, SmVarType type) {
@@ -103,7 +104,9 @@ int try_var (SmCodegen* gen, SmVar var, SmVarType type) {
 			object = TOPTR("%%tagged %%%d", "i8*", object);
 		} else if (type == TYPE_FUN) {
 			object = TOPTR("%%tagged %%%d", "%%closure*", object);
-		} else if (type == TYPE_INT || type == TYPE_BOOL) {
+		} else if (type == TYPE_INT) {
+		} else if (type == TYPE_BOOL) {
+			object = EMIT("trunc i64 %%%d to i1", object);
 		} else {
 			assert(FALSE);
 		}
@@ -339,6 +342,45 @@ static int create_prim_binary (SmCodegen* gen, const char* op) {
 
 	COMMENT("create binary prim for %s", op);
 	int closure = sm_codegen_create_closure (gen, closureid, -1);
+	return closure;
+}
+
+static int create_prim_cond (SmCodegen* gen) {
+	static int closure = -1;
+	if (closure >= 0) {
+		return closure;
+	}
+	
+	GET_CODE;
+	
+	int closureid = sm_codegen_begin_closure_func (gen);
+	COMMENT("prim cond func");
+	int sp = LOADSP;
+	RUNDBG("-> prim cond, sp=%p\n", sp, "i64*");
+
+	int cond = SPGET(sp, 0, NULL);
+
+	SmVar condvar = { .id=cond, .isthunk=FALSE, .type=TYPE_UNK };
+	cond = try_var (gen, condvar, TYPE_BOOL);
+	BR("i1 %%%d, label %%btrue, label %%bfalse", cond);
+
+	int cont;
+	LABEL("btrue");
+	cont = SPGET(sp, 1, "%closure*");
+	VARSP(sp, 3);
+	RUNDBG("enter true %p", cont, "%closure*");
+	ENTER(cont);
+
+	LABEL("bfalse");
+	cont = SPGET(sp, 2, "%closure*");
+	VARSP(sp, 3);
+	RUNDBG("enter false %p", cont, "%closure*");
+	ENTER(cont);
+	
+	sm_codegen_end_closure_func (gen);
+
+	COMMENT("create cond prim");
+	closure = sm_codegen_create_closure (gen, closureid, -1);
 	return closure;
 }
 
@@ -700,6 +742,37 @@ DEFUNC(compile_binary_expr, SmBinaryExpr) {
 	RETVAL(id=closure, isthunk=TRUE, type=TYPE_UNK);
 }
 
+DEFUNC(compile_cond_expr, SmCondExpr) {
+	GET_CODE;
+
+	int closureid = sm_codegen_begin_closure_func (gen);
+	COMMENT("cond closure func");
+	int sp = LOADSP;
+
+	COMMENT("visit cond");
+	SmVar cond = VISIT(expr->cond);
+	COMMENT("visit true");
+	SmVar truebody = VISIT(expr->truebody);
+	COMMENT("visit false");
+	SmVar falsebody = VISIT(expr->falsebody);
+
+	COMMENT("create prim cond closure");
+	int prim = create_prim_cond (gen);
+	SPSET(sp, -1, falsebody.id, "%closure*");
+	SPSET(sp, -2, truebody.id, "%closure*");
+	FINSP(sp, -3, prim, "%closure*");
+	
+	COMMENT("force cond");
+	RUNDBG("enter cond %p\n", cond.id, "%closure*");
+	ENTER(cond.id);
+	
+	sm_codegen_end_closure_func (gen);
+	
+	COMMENT("create cond thunk");
+	int closure = sm_codegen_create_closure (gen, closureid, prealloc);
+	RETVAL(id=closure, isthunk=TRUE, type=TYPE_BOOL);
+}
+
 #define CAST(x) (SmVar (*)(SmCodegen*, SmExpr*, int prealloc))(x)
 SmVar (*compile_table[])(SmCodegen*, SmExpr*, int prealloc) = {
 	[SM_MEMBER_EXPR] = CAST(compile_member_expr),
@@ -708,7 +781,8 @@ SmVar (*compile_table[])(SmCodegen*, SmExpr*, int prealloc) = {
 	[SM_INT_LITERAL] = CAST(compile_int_literal),
 	[SM_FUNC_EXPR] = CAST(compile_func_expr),
 	[SM_CALL_EXPR] = CAST(compile_call_expr),
-	[SM_BINARY_EXPR] = CAST(compile_binary_expr)
+	[SM_BINARY_EXPR] = CAST(compile_binary_expr),
+	[SM_COND_EXPR] = CAST(compile_cond_expr)
 };
 
 static SmVar call_compile_table (SmCodegen* gen, SmExpr* expr, int prealloc) {

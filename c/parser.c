@@ -95,12 +95,12 @@ FUNC(primary) {
 
 FUNC(call) {
 	SmExpr* expr = primary(parser);
+	CHECK(expr);
 
 	GPtrArray* args = g_ptr_array_new ();
 	NEW(call, SmCallExpr, SM_CALL_EXPR);
 	while (TRUE) {
-		if (CASE("eof") || CASE(";") || CASE(")") || CASE(",") || CASE("]") || CASE("|") ||
-			(CASE("id") && (CASESTR("if") || CASESTR("then") || CASESTR("else") || CASESTR("and") || CASESTR("or")))) {
+		if (!CASE("id") && !CASE("(") && !CASE("[") && !CASE("{")) {
 			break;
 		}
 		SmExpr* arg = primary(parser);
@@ -127,16 +127,18 @@ FUNC(binary) {
 	if (CASE("<") || CASE("<=") || CASE(">") || CASE(">=") || CASE("==") || CASE("!=") || CASE("and") || CASE("or") ||
 		CASE("+") || CASE("-") || CASE("*") || CASE("/") || CASE("**") || CASE("//")) {
 		NEW(bin, SmBinaryExpr, SM_BINARY_EXPR);
-		bin->op = STR;
-		STR = NULL;
+		bin->op = TYPE;
+		NEXT;
+		
 		bin->left = left;
 		left->parent = EXPR(bin);
-		
+
 		SmExpr* right = binary(parser);
 		CHECK(right);
 		
 		bin->right = right;
 		right->parent = EXPR(bin);
+
 		return EXPR(bin);
 	}
 	return left;

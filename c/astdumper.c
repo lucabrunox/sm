@@ -121,6 +121,15 @@ static char* dump_call_expr (SmCallExpr* expr) {
 	return res;
 }
 
+static char* dump_binary_expr (SmBinaryExpr* expr) {
+	char* left = sm_ast_dump (expr->left);
+	char* right = sm_ast_dump (expr->right);
+	char* res = str("(%s %s %s)", left, expr->op, right);
+	free (left);
+	free (right);
+	return res;
+}
+
 #define CAST(x) (char* (*)(SmExpr*))(x)
 char* (*dump_table[])(SmExpr*) = {
 	[SM_MEMBER_EXPR] = CAST(dump_member_expr),
@@ -129,7 +138,8 @@ char* (*dump_table[])(SmExpr*) = {
 	[SM_STR_LITERAL] = CAST(dump_literal),
 	[SM_INT_LITERAL] = CAST(dump_literal),
 	[SM_FUNC_EXPR] = CAST(dump_func_expr),
-	[SM_CALL_EXPR] = CAST(dump_call_expr)
+	[SM_CALL_EXPR] = CAST(dump_call_expr),
+	[SM_BINARY_EXPR] = CAST(dump_binary_expr)
 };
 
 char* sm_ast_dump (SmExpr* expr) {

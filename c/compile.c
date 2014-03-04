@@ -10,22 +10,21 @@
 #include "llvm.h"
 #include "code.h"
 #include "astdumper.h"
+#include "scope.h"
 
 #define DEFUNC(n,x) static SmVar n (SmCompile* comp, x* expr, int prealloc)
-#define GET_CODE SmCode* code = comp->code
+#define GET_CODE SmCode* code = sm_compile_get_code(comp)
 #define PUSH_BLOCK(x) sm_code_push_block(code, x)
 #define POP_BLOCK sm_code_pop_block(code)
 #define RETVAL(x,y,z) SmVar _res_var={.x, .y, .z}; return _res_var
 #define VISIT(x) call_compile_table (comp, EXPR(x), -1)
 #define PUSH_NEW_BLOCK PUSH_BLOCK(sm_code_new_block (code))
-#define LOADSP load_sp(comp)
-#define SPGET(sp,x,c) sp_get(comp, sp, x, c)
-#define SPSET(sp,x,v,c) sp_set(comp, sp, x, v, c)
-#define SPFIN(sp,x,v,c) sp_fin(comp, sp, x, v, c)
-#define VARSP(sp,x) var_sp(comp, sp, x)
-#define ENTER(x) enter(comp, x)
-#define NOTEMPS int old_use_temps = comp->use_temps; comp->use_temps = FALSE
-#define BACKTEMPS comp->use_temps = old_use_temps
+#define LOADSP sm_compile_load_sp(comp)
+#define FINSP(sp,x,v,c) sm_compile_fin_sp(comp, sp, x, v, c)
+#define VARSP(sp,x) sm_compile_var_sp(comp, sp, x)
+#define SPGET(sp,x,c) sm_compile_sp_get(comp, sp, x, c)
+#define SPSET(sp,x,v,c) sm_compile_sp_set(comp, sp, x, v, c)
+#define ENTER(x) sm_compile_enter(comp, x)
 #define BREAKPOINT CALL_("void @llvm.debugtrap()")
 
 #define CLOSURE_FUNC 0
@@ -60,20 +59,9 @@ typedef struct {
 	SmVarType type;
 } SmVar;
 
-typedef struct _SmScope SmScope;
-
-struct _SmScope {
-	int nparams;
-	GHashTable* map;
-	SmScope* parent;
-};
-
 typedef struct {
-	SmVar var;
-	SmVarType type;
-	int object;
-	int faillabel;
-} SmExc;
+	int use_temps;
+} SmClosureData;
 
 typedef struct {
 	SmCompileOpts opts;
@@ -81,20 +69,27 @@ typedef struct {
 	SmCodeBlock* decls;
 	SmVar ret;
 	SmScope* scope;
-	GQueue* exc_stack;
+	GQueue* closure_stack;
 	int cur_scopeid;
 	int next_closureid;
-	int use_temps;
 } SmCompile;
 
 static SmVar call_compile_table (SmCompile* comp, SmExpr* expr, int prealloc);
 
-static int load_sp (SmCompile* comp) {
+SmCode* sm_compile_get_code (SmCompile* comp) {
+	return comp->code;
+}
+
+SmScope* sm_compile_get_scope (SmCompile* comp) {
+	return comp->scope;
+}
+
+int sm_compile_load_sp (SmCompile* comp) {
 	GET_CODE;
 	return LOAD("i64** @sp");
 }
 
-static int sp_get (SmCompile* comp, int sp, int x, const char* cast) {
+int sm_compile_sp_get (SmCompile* comp, int sp, int x, const char* cast) {
 	GET_CODE;
 	COMMENT("sp[%d]", x);
 	sp = GETPTR("i64* %%%d, i32 %d", sp, x);
@@ -105,7 +100,7 @@ static int sp_get (SmCompile* comp, int sp, int x, const char* cast) {
 	return val;
 }
 
-static void sp_set (SmCompile* comp, int sp, int x, int v, const char* cast) {
+void sm_compile_sp_set (SmCompile* comp, int sp, int x, int v, const char* cast) {
 	GET_CODE;
 	COMMENT("sp[%d] = %%%d", x, v);
 	if (cast) {
@@ -116,7 +111,7 @@ static void sp_set (SmCompile* comp, int sp, int x, int v, const char* cast) {
 }
 
 // set and update the sp
-static int sp_fin (SmCompile* comp, int sp, int x, int v, const char* cast) {
+int sm_compile_fin_sp (SmCompile* comp, int sp, int x, int v, const char* cast) {
 	GET_CODE;
 	COMMENT("sp[%d] = %%%d", x, v);
 	if (cast) {
@@ -131,7 +126,7 @@ static int sp_fin (SmCompile* comp, int sp, int x, int v, const char* cast) {
 	return sp;
 }
 
-static int var_sp (SmCompile* comp, int sp, int x) {
+int sm_compile_var_sp (SmCompile* comp, int sp, int x) {
 	if (!x) {
 		return sp;
 	}
@@ -143,7 +138,7 @@ static int var_sp (SmCompile* comp, int sp, int x) {
 	return sp;
 }
 
-static void enter (SmCompile* comp, int closure) {
+void sm_compile_enter (SmCompile* comp, int closure) {
 	GET_CODE;
 	int funcptr = GETPTR("%%closure* %%%d, i32 0, i32 %d", closure, CLOSURE_FUNC);
 	int func = LOAD("%%closurefunc* %%%d", funcptr);
@@ -151,34 +146,34 @@ static void enter (SmCompile* comp, int closure) {
 	RET("void");
 }
 
-static int scope_size (SmScope* scope) {
-	if (!scope) {
-		return 0;
-	}
-	int size = g_hash_table_size (scope->map);
-	return scope_size (scope->parent)+size;
+SmCodeBlock* sm_compile_get_decls_block (SmCompile* comp) {
+	return comp->decls;
 }
 
 
-static int scope_lookup (SmScope* scope, const char* name) {
-	while (scope) {
-		int64_t id;
-		if (g_hash_table_lookup_extended (scope->map, (gpointer)name, NULL, (gpointer*)&id)) {
-			return scope_size (scope->parent)+id;
-		}
-		scope = scope->parent;
-	}
-	return -1;
+int sm_compile_get_use_temps (SmCompile* comp) {
+	SmClosureData *data = (SmClosureData*) g_queue_peek_tail (comp->closure_stack);
+	return data ? data->use_temps : FALSE;
 }
 
-static int begin_closure_func (SmCompile* comp, int closureid) {
+void sm_compile_set_use_temps (SmCompile* comp, int use_temps) {
+	SmClosureData *data = (SmClosureData*) g_queue_peek_tail (comp->closure_stack);
+	assert (data);
+	data->use_temps = TRUE;
+}
+
+int sm_compile_begin_closure_func (SmCompile* comp) {
 	GET_CODE;
 
+	int closureid = comp->next_closureid++;
 	PUSH_NEW_BLOCK;
 	BEGIN_FUNC("fastcc void", "closure_%d_eval", "%%closure*", closureid);
 	
-	int closure = sm_code_get_temp (code); // first param
+	(void) sm_code_get_temp (code); // first param
 	LABEL("entry");
+
+	SmClosureData* data = g_new0 (SmClosureData, 1);
+	g_queue_push_tail (comp->closure_stack, data);
 	/* if (!nparams) { */
 		/* // next call will point to the cache */
 		/* COMMENT("jump to cache at next call"); */
@@ -191,20 +186,22 @@ static int begin_closure_func (SmCompile* comp, int closureid) {
 			/* sm_code_get_temp (code); */
 		/* } */
 	/* } */
-	return closure;
+	return closureid;
 }
 
-static void end_closure_func (SmCompile* comp) {
+void sm_compile_end_closure_func (SmCompile* comp) {
 	GET_CODE;
 	END_FUNC;
 	POP_BLOCK;
+
+	g_queue_pop_tail (comp->closure_stack);
 }
 
-static int allocate_closure (SmCompile* comp) {
+int sm_compile_allocate_closure (SmCompile* comp) {
 	GET_CODE;
 	
-	int parent_size = comp->scope ? scope_size (comp->scope->parent) : 0;
-	int local_size = comp->scope ? g_hash_table_size (comp->scope->map) : 0;
+	int parent_size = sm_scope_get_size (sm_scope_get_parent (comp->scope));
+	int local_size = sm_scope_get_local_size (comp->scope);
 	COMMENT("alloc closure with %d vars", parent_size+local_size);
 	int alloc = CALL("i8* @aligned_alloc(i32 8, i32 %lu)",
 					 sizeof(void*)*CLOSURE_SCOPE+sizeof(void*)*(parent_size+local_size));
@@ -212,15 +209,15 @@ static int allocate_closure (SmCompile* comp) {
 	return closure;
 }
 
-static int create_closure (SmCompile* comp, int closureid, int prealloc) {
+int sm_compile_create_closure (SmCompile* comp, int closureid, int prealloc) {
 	GET_CODE;
-	int parent_size = comp->scope ? scope_size (comp->scope->parent) : 0;
-	int local_size = comp->scope ? g_hash_table_size (comp->scope->map) : 0;
+	int parent_size = sm_scope_get_size (sm_scope_get_parent (comp->scope));
+	int local_size = sm_scope_get_local_size (comp->scope);
 	int closure;
 	if (prealloc >= 0) {
 		closure = prealloc;
 	} else {
-		closure = allocate_closure (comp);
+		closure = sm_compile_allocate_closure (comp);
 	}
 
 	COMMENT("store closure function");
@@ -229,7 +226,7 @@ static int create_closure (SmCompile* comp, int closureid, int prealloc) {
 
 	if (comp->scope) {
 		// 0 = this closure
-		if (comp->use_temps) {
+		if (sm_compile_get_use_temps (comp)) {
 			COMMENT("use temps");
 			COMMENT("capture parent scope");
 			for (int i=0; i < parent_size; i++) {
@@ -278,7 +275,7 @@ static void sm_debug (SmCompile* comp, const char* fmt, int var, const char* cas
 	GET_CODE;
 	
 	int len = strlen(fmt)+1;
-	PUSH_BLOCK(comp->decls);
+	PUSH_BLOCK(sm_compile_get_decls_block (comp));
 	int consttmp = sm_code_get_temp (code);
 	EMIT_ ("@.const%d = private constant [%d x i8] c\"%s\\00\", align 8", consttmp, len, fmt);
 	POP_BLOCK;
@@ -313,7 +310,7 @@ int try_var (SmCompile* comp, SmVar var, SmVarType type) {
 		static const char* str = "runtime expected %llu, got %llu\n";
 		int len = strlen(str)+1;
 		if (consttmp < 0) {
-			PUSH_BLOCK(comp->decls);
+			PUSH_BLOCK(sm_compile_get_decls_block (comp));
 			consttmp = sm_code_get_temp (code);
 			EMIT_ ("@.const%d = private constant [%d x i8] c\"%s\\00\", align 8", consttmp, len, str);
 			POP_BLOCK;
@@ -345,20 +342,22 @@ DEFUNC(compile_member_expr, SmMemberExpr) {
 		exit(0);
 	}
 
-	int varid = scope_lookup (comp->scope, expr->name);
+	printf("member %p\n", sm_compile_get_scope(comp));
+	int varid = sm_scope_lookup (sm_compile_get_scope (comp), expr->name);
+	printf("member %p\n", sm_compile_get_scope(comp));
 	if (varid < 0) {
 		printf("not in scope %s\n", expr->name);
 		exit(0);
 	}
 
-	int parent_size = comp->scope ? scope_size (comp->scope->parent) : 0;
+	int parent_size = sm_scope_get_size (sm_scope_get_parent (sm_compile_get_scope (comp)));
 
 	{
 		int sp = LOADSP;
 		sm_debug(comp, g_strdup_printf("-> member %s, sp=%%p\n", expr->name), sp, "i64*");
 	}
 	int obj;
-	if (comp->use_temps) {
+	if (sm_compile_get_use_temps (comp)) {
 		if (varid < parent_size) {
 			COMMENT("member %s(%d) from closure", expr->name, varid);
 			// 0 = closure param
@@ -381,25 +380,23 @@ DEFUNC(compile_member_expr, SmMemberExpr) {
 	RETVAL(id=obj, isthunk=TRUE, type=TYPE_UNK);
 }
 
+void sm_compile_set_scope (SmCompile* comp, SmScope* scope) {
+	printf("set %p\n", scope);
+	comp->scope = scope;
+}
+
 DEFUNC(compile_seq_expr, SmSeqExpr) {
 	GET_CODE;
 
 	SmFuncExpr* func = (expr->base.parent && expr->base.parent->type == SM_FUNC_EXPR) ? (SmFuncExpr*) expr->base.parent : NULL;
-	
-	SmScope* scope = g_new0 (SmScope, 1);
-	if (comp->scope) {
-		scope->parent = comp->scope;
-	}
-	scope->map = g_hash_table_new (g_str_hash, g_str_equal);
-	comp->scope = scope;
+
+	SmScope* scope = sm_scope_new (sm_compile_get_scope (comp));
+	sm_compile_set_scope (comp, scope);
 
 	int nparams = func ? func->params->len : 0;
-	scope->nparams = nparams;
 	
-	int closureid = comp->next_closureid++;
-	begin_closure_func (comp, closureid);
-	int old_use_temps = comp->use_temps;
-	comp->use_temps = TRUE;
+	int closureid = sm_compile_begin_closure_func (comp);
+	sm_compile_set_use_temps (comp, TRUE);
 	COMMENT("seq/func closure");
 	int sp = LOADSP;
 	sm_debug(comp, "-> seq, sp=%p\n", sp, "i64*");
@@ -412,13 +409,13 @@ DEFUNC(compile_seq_expr, SmSeqExpr) {
 		for (int i=0; i < names->len; i++) {
 			const char* name = (const char*) names->pdata[i];
 
-			int existing = scope_lookup (scope, name);
+			int existing = sm_scope_lookup (scope, name);
 			if (existing >= 0) {
 				printf("shadowing %s\n", name);
 				exit(0);
 			}
 
-			g_hash_table_insert (scope->map, (gpointer)name, GINT_TO_POINTER(varid++));
+			sm_scope_set (scope, name, varid++);
 		}
 	}
 
@@ -426,13 +423,13 @@ DEFUNC(compile_seq_expr, SmSeqExpr) {
 	for (int i=0; i < nparams; i++) {
 		const char* name = (const char*) func->params->pdata[i];
 		
-		int existing = scope_lookup (scope, name);
+		int existing = sm_scope_lookup (scope, name);
 		if (existing >= 0) {
 			printf("shadowing %s\n", name);
 			exit(0);
 		}
 
-		g_hash_table_insert (scope->map, (gpointer)name, GINT_TO_POINTER(varid++));
+		sm_scope_set (scope, name, varid++);
 	}
 	
 	// make room for locals
@@ -449,7 +446,7 @@ DEFUNC(compile_seq_expr, SmSeqExpr) {
 		if (names->len == 1) {
 			const char* name = (const char*) names->pdata[0];
 			COMMENT("allocate for %s(%d)", name, i);
-			int alloc = allocate_closure (comp);
+			int alloc = sm_compile_allocate_closure (comp);
 			temp_diff = alloc-cur_alloc;
 			cur_alloc = alloc;
 			if (start_alloc < 0) {
@@ -485,16 +482,14 @@ DEFUNC(compile_seq_expr, SmSeqExpr) {
 	COMMENT("enter result");
 	sm_debug(comp, "enter %p\n", result.id, "%closure*");
 	ENTER(result.id);
-	comp->use_temps = old_use_temps;
-	end_closure_func (comp);
+	sm_compile_end_closure_func (comp);
 
-	comp->scope = scope->parent;
-	g_hash_table_unref (scope->map);
-	free (scope);
+	sm_compile_set_scope (comp, sm_scope_get_parent (scope));
+	sm_scope_free (scope);
 
 	COMMENT("create seq closure");
 	COMMENT("ast: %s", g_strescape (sm_ast_dump(EXPR(expr)), NULL));
-	int closure = create_closure (comp, closureid, prealloc);
+	int closure = sm_compile_create_closure (comp, closureid, prealloc);
 
 	if (!func) {
 		RETVAL(id=closure, isthunk=TRUE, type=result.type);
@@ -510,9 +505,7 @@ DEFUNC(compile_seq_expr, SmSeqExpr) {
 
 DEFUNC(compile_func_expr, SmFuncExpr) {
 	GET_CODE;
-	int closureid = comp->next_closureid++;
-	begin_closure_func (comp, closureid);
-	NOTEMPS;
+	int closureid = sm_compile_begin_closure_func (comp);
 	COMMENT("func thunk");
 	COMMENT("get cont");
 	int sp = LOADSP;
@@ -527,10 +520,9 @@ DEFUNC(compile_func_expr, SmFuncExpr) {
 	COMMENT("enter cont");
 	sm_debug(comp, "enter %p\n", cont, "%closure*");
 	ENTER(cont);
-	BACKTEMPS;
-	end_closure_func (comp);
+	sm_compile_end_closure_func (comp);
 	
-	int closure = create_closure (comp, closureid, prealloc);
+	int closure = sm_compile_create_closure (comp, closureid, prealloc);
 	RETVAL(id=closure, isthunk=TRUE, type=TYPE_FUN);
 }
 
@@ -540,17 +532,15 @@ DEFUNC(compile_literal, SmLiteral) {
 		// define constant string
 		// FIXME: do not create a thunk
 		
-		PUSH_BLOCK(comp->decls);
+		PUSH_BLOCK(sm_compile_get_decls_block (comp));
 		int consttmp = sm_code_get_temp (code);
 		int len = strlen(expr->str)+1;
 		// FIXME:
 		EMIT_ ("@.const%d = private constant [%d x i8] c\"%s\\00\", align 8", consttmp, len, expr->str);
 		POP_BLOCK;
 
-		int thunkid = comp->next_closureid++;
 		// expression code
-		begin_closure_func (comp, thunkid);
-		NOTEMPS;
+		int closureid = sm_compile_begin_closure_func (comp);
 		COMMENT("string thunk code for '%s' string", expr->str);
 		int sp = LOADSP;
 		sm_debug(comp, "-> literal, sp=%p\n", sp, "i64*");
@@ -564,13 +554,12 @@ DEFUNC(compile_literal, SmLiteral) {
 
 		sm_debug(comp, "enter %p\n", cont, "%closure*");
 		ENTER(cont);
-		BACKTEMPS;
-		end_closure_func (comp);
+		sm_compile_end_closure_func (comp);
 
 		// build thunk
 		COMMENT("create string thunk");
-		int thunk = create_closure (comp, thunkid, prealloc);
-		RETVAL(id=thunk, isthunk=TRUE, type=TYPE_STR);
+		int closure = sm_compile_create_closure (comp, closureid, prealloc);
+		RETVAL(id=closure, isthunk=TRUE, type=TYPE_STR);
 	} else {
 		// TODO: 
 		printf("only string literals supported\n");
@@ -581,10 +570,8 @@ DEFUNC(compile_literal, SmLiteral) {
 static int create_real_call_closure (SmCompile* comp, SmCallExpr* expr) {
 	GET_CODE;
 
-	int closureid = comp->next_closureid++;
-	begin_closure_func (comp, closureid);
+	int closureid = sm_compile_begin_closure_func (comp);
 	COMMENT("real call func");
-	NOTEMPS;
 
 	int sp = LOADSP;
 	COMMENT("get func");
@@ -607,20 +594,17 @@ static int create_real_call_closure (SmCompile* comp, SmCallExpr* expr) {
 	sm_debug(comp, "enter %p\n", func, "%closure*");
 	ENTER(func);
 
-	BACKTEMPS;
-	end_closure_func (comp);
+	sm_compile_end_closure_func (comp);
 
 	COMMENT("create real call closure");
-	int closure = create_closure (comp, closureid, -1);
+	int closure = sm_compile_create_closure (comp, closureid, -1);
 	return closure;
 }
 
 DEFUNC(compile_call_expr, SmCallExpr) {
 	GET_CODE;
-	
-	int thunkid = comp->next_closureid++;
-	begin_closure_func (comp, thunkid);
-	NOTEMPS;
+
+	int closureid = sm_compile_begin_closure_func (comp);
 	COMMENT("call thunk func");
 	int sp = LOADSP;
 	sm_debug(comp, "-> call, sp=%p\n", sp, "i64*");
@@ -629,19 +613,18 @@ DEFUNC(compile_call_expr, SmCallExpr) {
 	SmVar func = VISIT(expr->func);
 
 	int realfunc = create_real_call_closure (comp, expr);
-	SPFIN(sp, -1, realfunc, "%closure*");
+	FINSP(sp, -1, realfunc, "%closure*");
 	
 	COMMENT("force func");
 	sm_debug(comp, "enter %p\n", func.id, "%closure*");
 	ENTER(func.id);
 	
-	BACKTEMPS;
-	end_closure_func (comp);
+	sm_compile_end_closure_func (comp);
 	
 	// build thunk
 	COMMENT("create call thunk");
-	int thunk = create_closure (comp, thunkid, prealloc);
-	RETVAL(id=thunk, isthunk=TRUE, type=TYPE_UNK);
+	int closure = sm_compile_create_closure (comp, closureid, prealloc);
+	RETVAL(id=closure, isthunk=TRUE, type=TYPE_UNK);
 }
 
 #define CAST(x) (SmVar (*)(SmCompile*, SmExpr*, int prealloc))(x)
@@ -659,9 +642,7 @@ static SmVar call_compile_table (SmCompile* comp, SmExpr* expr, int prealloc) {
 
 static int create_nop_closure (SmCompile* comp) {
 	GET_CODE;
-	int nopid = comp->next_closureid++;
-	begin_closure_func (comp, nopid);
-	NOTEMPS;
+	int nopid = sm_compile_begin_closure_func (comp);
 	
 	COMMENT("nop func"); // discards one object from the stack
 	int sp = LOADSP;
@@ -670,20 +651,17 @@ static int create_nop_closure (SmCompile* comp) {
 	// end of the program
 	RET("void");
 
-	BACKTEMPS;
-	end_closure_func (comp);
+	sm_compile_end_closure_func (comp);
 	COMMENT("nop closure");
 	
-	int nopclo = create_closure (comp, nopid, -1);
+	int nopclo = sm_compile_create_closure (comp, nopid, -1);
 	return nopclo;
 }
 
 static int create_prim_print (SmCompile* comp) {
 	GET_CODE;
-	int directid = comp->next_closureid++;
-	begin_closure_func (comp, directid);
+	int directid = sm_compile_begin_closure_func (comp);
 	COMMENT("real print func");
-	NOTEMPS;
 	int sp = LOADSP;
 	COMMENT("get string");
 	int str = SPGET(sp, 0, NULL);
@@ -699,22 +677,19 @@ static int create_prim_print (SmCompile* comp) {
 	CALL ("i32 (i8*, ...)* @printf(i8* %%%d)", str);
 
 	COMMENT("put string back in the stack");
-	SPFIN(sp, 1, str, "i8*");
+	FINSP(sp, 1, str, "i8*");
 	sm_debug(comp, "enter %p", cont, "%closure*");
 	ENTER(cont);
-	BACKTEMPS;
-	end_closure_func (comp);
+	sm_compile_end_closure_func (comp);
 
-	int direct = create_closure (comp, directid, -1);
+	int direct = sm_compile_create_closure (comp, directid, -1);
 	return direct;
 }
 
 static int create_print_closure (SmCompile* comp) {
 	GET_CODE;
 	
-	int printid = comp->next_closureid++;
-	begin_closure_func (comp, printid);
-	NOTEMPS;
+	int printid = sm_compile_begin_closure_func (comp);
 	COMMENT("print closure func");
 	COMMENT("create direct closure");
 
@@ -725,16 +700,15 @@ static int create_print_closure (SmCompile* comp) {
 
 	COMMENT("push direct print closure");
 	int direct = create_prim_print (comp);
-	SPFIN(sp, 0, direct, "%closure*");
+	FINSP(sp, 0, direct, "%closure*");
 
 	COMMENT("enter string");
 	sm_debug(comp, "enter string %p\n", str, "%closure*");
 	ENTER(str);
-	BACKTEMPS;
-	end_closure_func (comp);
+	sm_compile_end_closure_func (comp);
 
 	COMMENT("create print closure");
-	int printclo = create_closure (comp, printid, -1);
+	int printclo = sm_compile_create_closure (comp, printid, -1);
 	return printclo;
 }
 
@@ -749,7 +723,8 @@ SmJit* sm_compile (SmCompileOpts opts, const char* name, SmExpr* expr) {
 	comp->opts = opts;
 	SmCode* code = sm_code_new ();
 	comp->code = code;
-	comp->exc_stack = g_queue_new ();
+	comp->scope = sm_scope_new (NULL);
+	comp->closure_stack = g_queue_new ();
 
 	comp->decls = sm_code_new_block (code);
 	
@@ -775,7 +750,6 @@ SmJit* sm_compile (SmCompileOpts opts, const char* name, SmExpr* expr) {
 	RET("%%tagged %%%d", obj);
 	END_FUNC;
 	POP_BLOCK;
-
 	PUSH_NEW_BLOCK;
 	BEGIN_FUNC("void", "main", "");
 	COMMENT("main");
@@ -799,7 +773,7 @@ SmJit* sm_compile (SmCompileOpts opts, const char* name, SmExpr* expr) {
 	COMMENT("visit root expression");
 	SmVar var = VISIT(expr);
 	COMMENT("push root expression");
-	sp = SPFIN(sp, -1, var.id, "%closure*");
+	sp = FINSP(sp, -1, var.id, "%closure*");
 	sm_debug(comp, "root expr %p\n", var.id, "%closure*");
 	sm_debug(comp, "sp=%p\n", sp, "i64*");
 

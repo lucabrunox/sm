@@ -3,7 +3,7 @@ all: sm hello.s
 CSRCS=main.c codegen.c compile.c objectpool.c code.c parser.c astdumper.c lexer.c scope.c
 HEADS=codegen.h objectpool.h code.h parser.h ast.h lexer.h llvm.h scope.h compile.h
 OBJS=$(subst .c,.o,$(CSRCS)) llvm.o
-# CFLAGS=-O2 -g -Wall -Werror -flto 
+# CFLAGS=-O2 -g -flto 
 # LDFLAGS=-flto
 CFLAGS=-O0 -g -Wall -Werror
 LDFLAGS=

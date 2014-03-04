@@ -28,6 +28,11 @@
 #define TAG_CHR DBL_qNAN|(4ULL << 48)
 #define TAG_STR DBL_qNAN|(5ULL << 48) // constant string
 #define TAG_EXC DBL_qNAN|(6ULL << 48) // exception, carries an object
+#define TAG_OBJ DBL_qNAN|(7ULL << 48)
+
+#define OBJ_FALSE (TAG_OBJ)
+#define OBJ_TRUE (TAG_OBJ|(1ULL))
+#define OBJ_EOS (TAG_OBJ|(2ULL))
 
 typedef enum {
 	TYPE_FUN,
@@ -95,7 +100,7 @@ int try_var (SmCodegen* gen, SmVar var, SmVarType type) {
 
 		LABEL("ok%d", ok);
 		object = EMIT("and %%tagged %%%d, %llu", object, OBJ_MASK);
-		object = EMIT("shl nuw %%tagged %%%d, 3", object);
+		/* object = EMIT("shl nuw %%tagged %%%d, 3", object); */
 		if (type == TYPE_STR) {
 			object = TOPTR("%%tagged %%%d", "i8*", object);
 		} else if (type == TYPE_FUN) {
@@ -204,7 +209,7 @@ DEFUNC(compile_seq_expr, SmSeqExpr) {
 	/* as a big lazy hack, keep track of the number of temporaries necessary to allocate a closure */
 	int start_alloc = -1;
 	int cur_alloc = 0;
-	int temp_diff = 0; // keep track of the number of temporaries necessary to allocate a closure
+	int temp_diff = 0;
 	for (int i=0; i < expr->assigns->len; i++) {
 		SmAssignExpr* assign = (SmAssignExpr*) expr->assigns->pdata[i];
 		GPtrArray* names = assign->names;
@@ -262,7 +267,7 @@ DEFUNC(compile_seq_expr, SmSeqExpr) {
 		// closure object
 		COMMENT("tag closure");
 		closure = TOINT("%%closure* %%%d", "%%tagged", closure);
-		closure = EMIT("lshr exact %%tagged %%%d, 3", closure);
+		/* closure = EMIT("lshr exact %%tagged %%%d, 3", closure); */
 		closure = EMIT("or %%tagged %%%d, %llu", closure, TAG_FUN);
 		RETVAL(id=closure, isthunk=FALSE, type=TYPE_FUN);
 	}
@@ -313,7 +318,7 @@ DEFUNC(compile_literal, SmLiteral) {
 		int cont = SPGET(sp, 0, "%closure*");
 		int obj = GETPTR("[%d x i8]* @.const%d, i32 0, i32 0", len, consttmp);
 		obj = EMIT ("ptrtoint i8* %%%d to %%tagged", obj);
-		obj = EMIT ("lshr exact %%tagged %%%d, 3", obj);
+		/* obj = EMIT ("lshr exact %%tagged %%%d, 3", obj); */
 		obj = EMIT ("or %%tagged %%%d, %llu", obj, TAG_STR);
 		SPSET(sp, 0, obj, NULL);
 
@@ -429,20 +434,29 @@ static int create_prim_print (SmCodegen* gen) {
 	COMMENT("real print func");
 	int sp = LOADSP;
 	COMMENT("get string");
-	int str = SPGET(sp, 0, NULL);
-	RUNDBG("-> real print, string object=%p\n", str, "i64");
+	int object = SPGET(sp, 0, NULL);
+	RUNDBG("-> real print, object=%p\n", object, "i64");
 	RUNDBG("sp=%p\n", sp, "i64*");
 
 	COMMENT("get continuation");
 	int cont = SPGET(sp, 1, "%closure*");
 	RUNDBG("cont=%p\n", cont, "%closure*");
 
-	SmVar var = { .id=str, .isthunk=FALSE, .type=TYPE_UNK };
-	str = try_var (gen, var, TYPE_STR);
-	CALL ("i32 (i8*, ...)* @printf(i8* %%%d)", str);
+	int tag = EMIT("and %%tagged %%%d, %llu", object, TAG_MASK);
+	SWITCH("i64 %%%d", "label %%unknown", "i64 %llu, label %%string", tag, TAG_STR);
+	LABEL("string");
+	int ptr = EMIT("and %%tagged %%%d, %llu", object, OBJ_MASK);
+	ptr = TOPTR("i64 %%%d", "i8*", ptr),
+	RUNDBG("string=%p\n", ptr, "i8*");
+	CALL ("i32 (i8*, ...)* @printf(i8* %%%d)", ptr);
+	BR ("label %%continue");
+	
+	LABEL("unknown");
+	RET("void");
 
-	COMMENT("put string back in the stack");
-	FINSP(sp, 1, str, "i8*");
+	LABEL("continue");
+	COMMENT("put object back in the stack");
+	FINSP(sp, 1, object, NULL);
 	RUNDBG("enter %p", cont, "%closure*");
 	ENTER(cont);
 	sm_codegen_end_closure_func (gen);

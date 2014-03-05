@@ -33,6 +33,9 @@
 #define OBJ_TRUE (TAG_OBJ|(1ULL))
 #define OBJ_EOS (TAG_OBJ|(2ULL))
 
+#define LIST_SIZE 0
+#define LIST_ELEMS 1
+
 typedef enum {
 	TYPE_FUN,
 	TYPE_LST,
@@ -230,6 +233,15 @@ static int create_prim_print (SmCodegen* gen) {
 		POP_BLOCK;
 	}
 
+	static int list_str = -1;
+	int list_len = strlen("[%llu]")+1;
+	if (list_str < 0) {
+		PUSH_BLOCK(sm_codegen_get_decls_block (gen));
+		list_str = sm_code_get_temp (code);
+		EMIT_ ("@.const%d = private constant [%d x i8] c\"[%%llu]\\00\", align 8", list_str, list_len);
+		POP_BLOCK;
+	}
+
 	static int unk_str = -1;
 	const char* unk_fmt = "unknown object type: %llu\n";
 	int unk_len = strlen(unk_fmt)+1;
@@ -253,8 +265,8 @@ static int create_prim_print (SmCodegen* gen) {
 	RUNDBG("cont=%p\n", cont, "%closure*");
 
 	int tag = EMIT("and %%tagged %%%d, %llu", object, TAG_MASK);
-	SWITCH("i64 %%%d", "label %%unknown", "i64 %llu, label %%bint i64 %llu, label %%bstring i64 %llu, label %%bobject",
-		   tag, TAG_INT, TAG_STR, TAG_OBJ);
+	SWITCH("i64 %%%d", "label %%unknown", "i64 %llu, label %%bint i64 %llu, label %%bstring i64 %llu, label %%bobject i64 %llu, label %%blist",
+		   tag, TAG_INT, TAG_STR, TAG_OBJ, TAG_LST);
 
 	LABEL("bint");
 	int ptr = BITCAST("[%d x i8]* @.const%d", "i8*", int_len, int_str);
@@ -265,7 +277,7 @@ static int create_prim_print (SmCodegen* gen) {
 	
 	LABEL("bstring");
 	ptr = EMIT("and %%tagged %%%d, %llu", object, OBJ_MASK);
-	ptr = TOPTR("i64 %%%d", "i8*", ptr),
+	ptr = TOPTR("i64 %%%d", "i8*", ptr);
 	RUNDBG("string=%p\n", ptr, "i8*");
 	CALL ("i32 (i8*, ...)* @printf(i8* %%%d)", ptr);
 	BR ("label %%continue");
@@ -287,6 +299,15 @@ static int create_prim_print (SmCodegen* gen) {
 	LABEL("beos");
 	ptr = BITCAST("[%d x i8]* @.const%d", "i8*", eos_len, eos_str);
 	CALL ("i32 (i8*, ...)* @printf(i8* %%%d)", ptr);
+	BR ("label %%continue");
+
+	LABEL("blist");
+	ptr = BITCAST("[%d x i8]* @.const%d", "i8*", list_len, list_str);
+	int list = EMIT("and %%tagged %%%d, %llu", object, OBJ_MASK);
+	list = TOPTR("i64 %%%d", "%%list*", list);
+	int listsize = GETPTR("%%list* %%%d, i32 0, i32 0", list);
+	listsize = LOAD("i64* %%%d", listsize);
+	CALL ("i32 (i8*, ...)* @printf(i8* %%%d, i64 %%%d)", ptr, listsize);
 	BR ("label %%continue");
 
 	LABEL("unknown");
@@ -816,6 +837,46 @@ DEFUNC(compile_cond_expr, SmCondExpr) {
 	RETVAL(id=closure, isthunk=TRUE, type=TYPE_BOOL);
 }
 
+DEFUNC(compile_list_expr, SmListExpr) {
+	GET_CODE;
+
+	int closureid = sm_codegen_begin_closure_func (gen);
+	COMMENT("list closure func");
+	int sp = LOADSP;
+	int cont = SPGET(sp, 0, "%closure*");
+	RUNDBG("-> list closure, sp=%p\n", sp, NULL);
+	
+	COMMENT("allocate list of size %d", expr->elems->len);
+	int list = CALL("i8* @aligned_alloc(i32 8, i32 %d)", (int)(sizeof(void*)*LIST_ELEMS + sizeof(void*)*expr->elems->len));
+	list = BITCAST("i8* %%%d", "%%list*", list);
+
+	COMMENT("assign size to list");
+	int size = GETPTR("%%list* %%%d, i32 0, i32 0", list);
+	STORE("i64 %d", "i64* %%%d", expr->elems->len, size);
+
+	for (int i=0; i < expr->elems->len; i++) {
+		SmExpr* elem = EXPR(expr->elems->pdata[i]);
+		COMMENT("visit element %d\n", i);
+		SmVar var = VISIT(elem);
+		COMMENT("assign element %d to list\n", i);
+		int ptr = GETPTR("%%list* %%%d, i32 0, i32 %d, i32 %d", list, LIST_ELEMS, i);
+		STORE("%%closure* %%%d", "%%closure** %%%d", var.id, ptr);
+	}
+
+	COMMENT("tag list");
+	list = TOINT("%%list* %%%d", "%%tagged", list);
+	list = EMIT("or %%tagged %%%d, %llu", list, TAG_LST);
+	SPSET(sp, 0, list, NULL);
+	
+	RUNDBG("enter cont %p\n", cont, "%closure*");
+	ENTER(cont);
+	sm_codegen_end_closure_func (gen);
+
+	COMMENT("create list thunk");
+	int closure = sm_codegen_create_closure (gen, closureid, prealloc);
+	RETVAL(id=closure, isthunk=TRUE, type=TYPE_LST);
+}
+
 #define CAST(x) (SmVar (*)(SmCodegen*, SmExpr*, int prealloc))(x)
 SmVar (*compile_table[])(SmCodegen*, SmExpr*, int prealloc) = {
 	[SM_MEMBER_EXPR] = CAST(compile_member_expr),
@@ -825,7 +886,8 @@ SmVar (*compile_table[])(SmCodegen*, SmExpr*, int prealloc) = {
 	[SM_FUNC_EXPR] = CAST(compile_func_expr),
 	[SM_CALL_EXPR] = CAST(compile_call_expr),
 	[SM_BINARY_EXPR] = CAST(compile_binary_expr),
-	[SM_COND_EXPR] = CAST(compile_cond_expr)
+	[SM_COND_EXPR] = CAST(compile_cond_expr),
+	[SM_LIST_EXPR] = CAST(compile_list_expr)
 };
 
 static SmVar call_compile_table (SmCodegen* gen, SmExpr* expr, int prealloc) {
@@ -871,6 +933,7 @@ SmJit* sm_compile (SmCodegenOpts opts, const char* name, SmExpr* expr) {
 	EMIT_ ("@stack = global i64* null, align 8");
 	EMIT_ ("@sp = global i64* null, align 8");
 	DEFINE_STRUCT ("closure", "%%closurefunc, %%tagged, [0 x %%closure*]"); // func, cached object, scope
+	DEFINE_STRUCT ("list", "i64, [0 x %%closure*]"); // size, thunks
 	POP_BLOCK;
 
 	PUSH_NEW_BLOCK;

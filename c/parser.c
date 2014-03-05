@@ -36,7 +36,7 @@ void sm_parser_free (SmParser* parser) {
 #define STR (CUR.str)
 #define NEW(n,x,t) x* n = g_new0(x, 1); (n)->base.type=t
 #define SAVE (*parser)
-#define RESTORE(x) parser->lexer=x.cur.start; NEXT
+#define RESTORE(x) parser->lexer=x.cur.start; STR=NULL; NEXT
 #define CHECK(x) if (!x) return NULL
 #define CASE(x) (!strcmp(TYPE, x))
 #define CASESTR(x) (!strcmp(STR, x))

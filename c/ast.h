@@ -15,7 +15,8 @@ typedef enum {
 	SM_FUNC_EXPR,
 	SM_CALL_EXPR,
 	SM_BINARY_EXPR,
-	SM_COND_EXPR
+	SM_COND_EXPR,
+	SM_LIST_EXPR
 } SmExprType;
 
 typedef struct _SmExpr SmExpr;
@@ -82,5 +83,10 @@ typedef struct {
 	SmExpr* truebody;
 	SmExpr* falsebody;
 } SmCondExpr;
+
+typedef struct {
+	SmExpr base;
+	GPtrArray* elems;
+} SmListExpr;
 
 #endif

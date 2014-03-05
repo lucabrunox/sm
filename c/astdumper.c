@@ -140,6 +140,26 @@ static char* dump_cond_expr (SmCondExpr* expr) {
 	return res;
 }
 
+static char* dump_list_expr (SmListExpr* expr) {
+	char* res = strdup("[");
+	for (int i=0; i < expr->elems->len; i++) {
+		char* elem = sm_ast_dump (EXPR(expr->elems->pdata[i]));
+		char* old = res;
+		if (i == 0) {
+			res = str("%s%s", res, elem);
+		} else {
+			res = str("%s, %s", res, elem);
+		}
+		free (old);
+		free (elem);
+	}
+	
+	char* old = res;
+	res = str("%s]", res);
+	free(old);
+	return res;
+}
+
 #define CAST(x) (char* (*)(SmExpr*))(x)
 char* (*dump_table[])(SmExpr*) = {
 	[SM_MEMBER_EXPR] = CAST(dump_member_expr),
@@ -150,7 +170,8 @@ char* (*dump_table[])(SmExpr*) = {
 	[SM_FUNC_EXPR] = CAST(dump_func_expr),
 	[SM_CALL_EXPR] = CAST(dump_call_expr),
 	[SM_BINARY_EXPR] = CAST(dump_binary_expr),
-	[SM_COND_EXPR] = CAST(dump_cond_expr)
+	[SM_COND_EXPR] = CAST(dump_cond_expr),
+	[SM_LIST_EXPR] = CAST(dump_list_expr)
 };
 
 char* sm_ast_dump (SmExpr* expr) {

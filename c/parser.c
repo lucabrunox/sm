@@ -50,6 +50,7 @@ static char* identifier (SmParser* parser) {
 }
 
 FUNC(seq);
+FUNC2(function, int allow_seq);
 
 FUNC2(member, SmExpr* inner) {
 	char* id = identifier(parser);
@@ -61,6 +62,27 @@ FUNC2(member, SmExpr* inner) {
 	if (inner) {
 		inner->parent = EXPR(expr);
 	}
+	return EXPR(expr);
+}
+
+FUNC(list) {
+	SKIP("[");
+	NEW(expr, SmListExpr, SM_LIST_EXPR);
+	expr->elems = g_ptr_array_new ();
+	
+	int first = TRUE;
+	while (!CASE("]")) {
+		if (!first) {
+			SKIP(",");
+		} else {
+			first = FALSE;
+		}
+		SmExpr* elem = function(parser, FALSE);
+		g_ptr_array_add (expr->elems, elem);
+		elem->parent = EXPR(expr);
+	}
+	SKIP("]");
+
 	return EXPR(expr);
 }
 
@@ -84,6 +106,8 @@ FUNC(primary) {
 		SKIP("(");
 		expr = seq(parser);
 		SKIP(")");
+	} else if (CASE("[")) {
+		expr = list(parser);
 	} else {
 		printf("unexpected %s\n", TYPE);
 		abort();

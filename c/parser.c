@@ -247,8 +247,7 @@ FUNC(assign) {
 		g_ptr_array_add (names, name);
 		while (ACCEPT (",")) {
 			if (CASE("id")) {
-				g_ptr_array_add (names, STR);
-				STR=NULL;
+				g_ptr_array_add (names, identifier(parser));
 			} else {
 				goto rollback;
 			}

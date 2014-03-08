@@ -499,6 +499,30 @@ DEFUNC(compile_member_expr, SmMemberExpr) {
 	RETVAL(id=obj, isthunk=TRUE, type=TYPE_UNK);
 }
 
+static void create_match_closure (SmCodegen* gen, int prealloc, int thunk, int pos) {
+	GET_CODE;
+	
+	int closureid = sm_codegen_begin_closure_func (gen);
+	COMMENT("match func for thunk %%%d at pos %d", thunk, pos);
+	int sp = LOADSP;
+	RUNDBG("-> match func, sp=%p", sp, NULL);
+	COMMENT("get thunk from closure");
+	int list = GETPTR("%%closure* %%0, i32 0, i32 %d, i32 0", CLOSURE_SCOPE);
+	list = LOAD("%%closure** %%%d", list);
+	
+	RUNDBG("enter %p", list, "%closure*");
+	ENTER(list);
+	sm_codegen_end_closure_func (gen);
+
+	COMMENT("store func in match closure");
+	int ptr = GETPTR("%%closure* %%%d, i32 0, i32 %d", prealloc, CLOSURE_FUNC);
+	STORE("%%closurefunc " FUNC("closure_%d_eval"), "%%closurefunc* %%%d", closureid, ptr);
+
+	COMMENT("store thunk in match closure");
+	ptr = GETPTR("%%closure* %%%d, i32 0, i32 %d, i32 0", prealloc, CLOSURE_SCOPE);
+	STORE("%%closure* %%%d", "%%closure** %%%d", thunk, ptr);
+}
+
 DEFUNC(compile_seq_expr, SmSeqExpr) {
 	GET_CODE;
 
@@ -515,12 +539,16 @@ DEFUNC(compile_seq_expr, SmSeqExpr) {
 	int sp = LOADSP;
 	RUNDBG("-> seq, sp=%p\n", sp, "i64*");
 	
-	int varid = 0;
-	/* assign ids to locals */
+	int nlocals = 0;
+	/* assign ids to locals and preallocate thunks */
+	/* as a big lazy hack, keep track of the number of temporaries that we use to allocate a closure */
+	int start_alloc = -1;
+	int cur_alloc = 0;
+	int temp_diff = 0;
 	for (int i=0; i < expr->assigns->len; i++) {
 		SmAssignExpr* assign = (SmAssignExpr*) expr->assigns->pdata[i];
-		for (int i=0; i < assign->names->len; i++) {
-			const char* name = (const char*) assign->names->pdata[i];
+		for (int j=0; j < assign->names->len; j++) {
+			const char* name = (const char*) assign->names->pdata[j];
 
 			int existing = sm_scope_lookup (scope, name);
 			if (existing >= 0) {
@@ -528,7 +556,15 @@ DEFUNC(compile_seq_expr, SmSeqExpr) {
 				exit(0);
 			}
 
-			sm_scope_set (scope, name, varid++);
+			int alloc = sm_codegen_allocate_closure (gen);
+			temp_diff = alloc-cur_alloc;
+			cur_alloc = alloc;
+			if (start_alloc < 0) {
+				start_alloc = alloc;
+			}
+			SPSET(sp, -nlocals-1, alloc, "%closure*");
+
+			sm_scope_set (scope, name, nlocals++);
 		}
 	}
 
@@ -542,32 +578,11 @@ DEFUNC(compile_seq_expr, SmSeqExpr) {
 			exit(0);
 		}
 
-		sm_scope_set (scope, name, varid++);
+		sm_scope_set (scope, name, nlocals+i);
 	}
 	
 	// make room for locals
-	sp = VARSP(sp, -expr->assigns->len);
-
-	/* preallocate closures */
-	/* as a big lazy hack, keep track of the number of temporaries necessary to allocate a closure */
-	int start_alloc = -1;
-	int cur_alloc = 0;
-	int temp_diff = 0;
-	varid = 0;
-	for (int i=0; i < expr->assigns->len; i++) {
-		SmAssignExpr* assign = (SmAssignExpr*) expr->assigns->pdata[i];
-		for (int j=0; j < assign->names->len; j++) {
-			const char* name = (const char*) assign->names->pdata[i];
-			COMMENT("allocate for %s(%d)", name, varid);
-			int alloc = sm_codegen_allocate_closure (gen);
-			temp_diff = alloc-cur_alloc;
-			cur_alloc = alloc;
-			if (start_alloc < 0) {
-				start_alloc = alloc;
-			}
-			SPSET(sp, varid++, alloc, "%closure*");
-		}
-	}
+	sp = VARSP(sp, -nlocals);
 
 	/* visit assignments */
 	for (int i=0; i < expr->assigns->len; i++) {
@@ -577,18 +592,21 @@ DEFUNC(compile_seq_expr, SmSeqExpr) {
 			const char* name = (const char*) names->pdata[0];
 			COMMENT("assign for %s(%d)", name, i);
 			RUNDBG("assign %p\n", start_alloc, "%closure*");
-			call_compile_table (gen, EXPR(assign->value), start_alloc);
+			(void) call_compile_table (gen, EXPR(assign->value), start_alloc);
 			start_alloc += temp_diff;
 		} else {
-			printf("unsupported pattern match\n");
-			exit(0);
+			SmVar var = VISIT(assign->value);
+			for (int j=0; j < names->len; j++) {
+				create_match_closure (gen, start_alloc, var.id, j);
+				start_alloc += temp_diff;
+			}
 		}
 	}
 
 	COMMENT("visit seq result");
 	SmVar result = VISIT(expr->result);
 	COMMENT("pop parameters and locals");
-	VARSP(sp, nparams+expr->assigns->len);
+	VARSP(sp, nparams+nlocals);
 	COMMENT("enter result");
 	RUNDBG("enter %p\n", result.id, "%closure*");
 	ENTER(result.id);

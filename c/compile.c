@@ -583,7 +583,6 @@ DEFUNC(compile_seq_expr, SmSeqExpr) {
 	int nlocals = 0;
 	/* assign ids to locals and preallocate thunks */
 	/* as a big lazy hack, keep track of the number of temporaries that we use to allocate a closure */
-	int start_alloc = -1;
 	int cur_alloc = 0;
 	int temp_diff = 0;
 	for (int i=0; i < expr->assigns->len; i++) {
@@ -600,9 +599,6 @@ DEFUNC(compile_seq_expr, SmSeqExpr) {
 			int alloc = sm_codegen_allocate_closure (gen);
 			temp_diff = alloc-cur_alloc;
 			cur_alloc = alloc;
-			if (start_alloc < 0) {
-				start_alloc = alloc;
-			}
 			SPSET(sp, -nlocals-1, alloc, "%closure*");
 
 			sm_scope_set (scope, name, nlocals++);
@@ -633,13 +629,13 @@ DEFUNC(compile_seq_expr, SmSeqExpr) {
 			const char* name = (const char*) names->pdata[0];
 			COMMENT("assign for %s(%d)", name, i);
 			RUNDBG("assign %p\n", start_alloc, "%closure*");
-			(void) call_compile_table (gen, EXPR(assign->value), start_alloc);
-			start_alloc += temp_diff;
+			(void) call_compile_table (gen, EXPR(assign->value), cur_alloc);
+			cur_alloc -= temp_diff;
 		} else {
 			SmVar var = VISIT(assign->value);
 			for (int j=0; j < names->len; j++) {
-				create_match_closure (gen, start_alloc, var.id, j);
-				start_alloc += temp_diff;
+				create_match_closure (gen, cur_alloc, var.id, j);
+				cur_alloc -= temp_diff;
 			}
 		}
 	}

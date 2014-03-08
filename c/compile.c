@@ -628,12 +628,13 @@ DEFUNC(compile_seq_expr, SmSeqExpr) {
 		if (names->len == 1) {
 			const char* name = (const char*) names->pdata[0];
 			COMMENT("assign for %s(%d)", name, i);
-			RUNDBG("assign %p\n", start_alloc, "%closure*");
+			RUNDBG("assign %p\n", cur_alloc, "%closure*");
 			(void) call_compile_table (gen, EXPR(assign->value), cur_alloc);
 			cur_alloc -= temp_diff;
 		} else {
 			SmVar var = VISIT(assign->value);
 			for (int j=0; j < names->len; j++) {
+				RUNDBG("assign match %p\n", cur_alloc, "%closure*");
 				create_match_closure (gen, cur_alloc, var.id, j);
 				cur_alloc -= temp_diff;
 			}

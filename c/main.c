@@ -15,7 +15,7 @@ int main() {
 	/* sm_lexer_init (&lexer, "asd=32; dsa=32; asd == dsa"); */
 	/* sm_lexer_init (&lexer, "asd = 'foo\\n'; dsa = x: (we='bar\\n'; asd); dsa"); */
 	/* sm_lexer_init (&lexer, "if 22 > 3 then eos else 'bar'"); */
-	sm_lexer_init (&lexer, "x,y=[123, 321]; y");
+	sm_lexer_init (&lexer, "x,y=[123, 321]; x");
 	SmParser* parser = sm_parser_new ();
 	SmExpr* expr = sm_parser_parse (parser, lexer);
 	if (expr) {

@@ -159,9 +159,9 @@ int sm_codegen_allocate_closure (SmCodegen* gen) {
 	int parent_size = sm_scope_get_size (sm_scope_get_parent (gen->scope));
 	int local_size = sm_scope_get_local_size (gen->scope);
 	COMMENT("alloc closure with %d vars", parent_size+local_size);
-	int alloc = CALL("i8* @aligned_alloc(i32 8, i32 %lu)",
+	int closure = CALL("i8* @aligned_alloc(i32 8, i32 %lu)",
 					 sizeof(void*)*CLOSURE_SCOPE+sizeof(void*)*(parent_size+local_size));
-	int closure = BITCAST("i8* %%%d", "%%closure*", alloc);
+	closure = BITCAST("i8* %%%d", "%%closure*", closure);
 	return closure;
 }
 

@@ -110,6 +110,8 @@ int try_var (SmCodegen* gen, SmVar var, SmVarType type) {
 		} else if (type == TYPE_INT || type == TYPE_EOS) {
 		} else if (type == TYPE_BOOL) {
 			object = EMIT("trunc i64 %%%d to i1", object);
+		} else if (type == TYPE_LST) {
+			object = TOPTR("%%tagged %%%d", "%%list*", object);
 		} else {
 			assert(FALSE);
 		}
@@ -318,7 +320,7 @@ static int create_prim_print (SmCodegen* gen) {
 	LABEL("continue");
 	COMMENT("put object back in the stack");
 	FINSP(sp, 1, object, NULL);
-	RUNDBG("enter %p", cont, "%closure*");
+	RUNDBG("enter %p\n", cont, "%closure*");
 	ENTER(cont);
 	sm_codegen_end_closure_func (gen);
 
@@ -428,13 +430,13 @@ static int create_prim_cond (SmCodegen* gen) {
 	LABEL("btrue");
 	cont = SPGET(sp, 1, "%closure*");
 	VARSP(sp, 3);
-	RUNDBG("enter true %p", cont, "%closure*");
+	RUNDBG("enter true %p\n", cont, "%closure*");
 	ENTER(cont);
 
 	LABEL("bfalse");
 	cont = SPGET(sp, 2, "%closure*");
 	VARSP(sp, 3);
-	RUNDBG("enter false %p", cont, "%closure*");
+	RUNDBG("enter false %p\n", cont, "%closure*");
 	ENTER(cont);
 	
 	sm_codegen_end_closure_func (gen);
@@ -499,18 +501,57 @@ DEFUNC(compile_member_expr, SmMemberExpr) {
 	RETVAL(id=obj, isthunk=TRUE, type=TYPE_UNK);
 }
 
+static int create_list_at_closure (SmCodegen* gen, int pos) {
+	GET_CODE;
+
+	int closureid = sm_codegen_begin_closure_func (gen);
+	COMMENT("list at func for pos %d", pos);
+	int sp = LOADSP;
+	RUNDBG("-> list at func, sp=%p\n", sp, NULL);
+	int list = SPGET(sp, 0, NULL);
+	SmVar var = { .id=list, .isthunk=FALSE, .type=TYPE_UNK };
+	list = try_var (gen, var, TYPE_LST);
+
+	COMMENT("get element at pos %d", pos);
+	int elem = GETPTR("%%list* %%%d, i32 0, i32 %d, i32 %d", list, LIST_ELEMS, pos);
+	elem = LOAD("%%closure** %%%d", elem);
+
+	// pop argument
+	VARSP(sp, 1);
+
+	RUNDBG("enter elem %p\n", elem, "%closure*");
+	ENTER(elem);
+	sm_codegen_end_closure_func (gen);
+
+	COMMENT("create match pos %d closure", pos);
+	int closure = CALL("i8* @aligned_alloc(i32 8, i32 %lu)",
+					 sizeof(void*)*CLOSURE_SCOPE);
+	closure = BITCAST("i8* %%%d", "%%closure*", closure);
+
+	COMMENT("store list at %d function", pos);
+	int funcptr = GETPTR("%%closure* %%%d, i32 0, i32 %d", closure, CLOSURE_FUNC);
+	STORE("%%closurefunc " FUNC("closure_%d_eval"), "%%closurefunc* %%%d", closureid, funcptr);
+
+	return closure;
+}
+
 static void create_match_closure (SmCodegen* gen, int prealloc, int thunk, int pos) {
 	GET_CODE;
-	
+
 	int closureid = sm_codegen_begin_closure_func (gen);
 	COMMENT("match func for thunk %%%d at pos %d", thunk, pos);
 	int sp = LOADSP;
-	RUNDBG("-> match func, sp=%p", sp, NULL);
-	COMMENT("get thunk from closure");
+	RUNDBG("-> match func, sp=%p\n", sp, NULL);
+	
+	COMMENT("get list thunk from closure");
 	int list = GETPTR("%%closure* %%0, i32 0, i32 %d, i32 0", CLOSURE_SCOPE);
 	list = LOAD("%%closure** %%%d", list);
+
+	COMMENT("push list at %d closure", pos);
+	int posclo = create_list_at_closure (gen, pos);
+	FINSP(sp, -1, posclo, "%closure*");
 	
-	RUNDBG("enter %p", list, "%closure*");
+	RUNDBG("enter %p\n", list, "%closure*");
 	ENTER(list);
 	sm_codegen_end_closure_func (gen);
 
@@ -790,7 +831,7 @@ DEFUNC(compile_binary_expr, SmBinaryExpr) {
 	SPSET(sp, 0, prim, "%closure*");
 
 	COMMENT("enter right");
-	RUNDBG("enter right %p", right, NULL);
+	RUNDBG("enter right %p\n\n", right, NULL);
 	ENTER(right);
 	sm_codegen_end_closure_func (gen);
 

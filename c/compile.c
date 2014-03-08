@@ -519,9 +519,8 @@ DEFUNC(compile_seq_expr, SmSeqExpr) {
 	/* assign ids to locals */
 	for (int i=0; i < expr->assigns->len; i++) {
 		SmAssignExpr* assign = (SmAssignExpr*) expr->assigns->pdata[i];
-		GPtrArray* names = assign->names;
-		for (int i=0; i < names->len; i++) {
-			const char* name = (const char*) names->pdata[i];
+		for (int i=0; i < assign->names->len; i++) {
+			const char* name = (const char*) assign->names->pdata[i];
 
 			int existing = sm_scope_lookup (scope, name);
 			if (existing >= 0) {
@@ -554,22 +553,19 @@ DEFUNC(compile_seq_expr, SmSeqExpr) {
 	int start_alloc = -1;
 	int cur_alloc = 0;
 	int temp_diff = 0;
+	varid = 0;
 	for (int i=0; i < expr->assigns->len; i++) {
 		SmAssignExpr* assign = (SmAssignExpr*) expr->assigns->pdata[i];
-		GPtrArray* names = assign->names;
-		if (names->len == 1) {
-			const char* name = (const char*) names->pdata[0];
-			COMMENT("allocate for %s(%d)", name, i);
+		for (int j=0; j < assign->names->len; j++) {
+			const char* name = (const char*) assign->names->pdata[i];
+			COMMENT("allocate for %s(%d)", name, varid);
 			int alloc = sm_codegen_allocate_closure (gen);
 			temp_diff = alloc-cur_alloc;
 			cur_alloc = alloc;
 			if (start_alloc < 0) {
 				start_alloc = alloc;
 			}
-			SPSET(sp, i, alloc, "%closure*");
-		} else {
-			printf("unsupported pattern match\n");
-			exit(0);
+			SPSET(sp, varid++, alloc, "%closure*");
 		}
 	}
 

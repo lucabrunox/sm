@@ -11,10 +11,10 @@
 #define POP_BLOCK sm_code_pop_block(code)
 #define PUSH_NEW_BLOCK PUSH_BLOCK(sm_code_new_block (code))
 #define LOADSP sm_codegen_load_sp(gen)
-#define FINSP(sp,x,v,c) sm_codegen_fin_sp(gen, sp, x, v, c)
-#define VARSP(sp,x) sm_codegen_var_sp(gen, sp, x)
-#define SPGET(sp,x,c) sm_codegen_sp_get(gen, sp, x, c)
-#define SPSET(sp,x,v,c) sm_codegen_sp_set(gen, sp, x, v, c)
+#define FINSP(x,v,c) sm_codegen_fin_sp(gen, x, v, c)
+#define VARSP(x) sm_codegen_var_sp(gen, x)
+#define SPGET(x,c) sm_codegen_sp_get(gen, x, c)
+#define SPSET(x,v,c) sm_codegen_sp_set(gen, x, v, c)
 #define ENTER(x) sm_codegen_enter(gen, x)
 #define BREAKPOINT CALL_("void @llvm.debugtrap()")
 #define RUNDBG(f,x,c) sm_codegen_debug(gen, f, x, c)
@@ -41,10 +41,11 @@ int sm_codegen_get_use_temps (SmCodegen* gen);
 void sm_codegen_set_use_temps (SmCodegen* gen, int use_temps);
 
 int sm_codegen_load_sp (SmCodegen* gen);
-int sm_codegen_sp_get (SmCodegen* gen, int sp, int x, const char* cast);
-void sm_codegen_sp_set (SmCodegen* gen, int sp, int x, int v, const char* cast);
-int sm_codegen_fin_sp (SmCodegen* gen, int sp, int x, int v, const char* cast);
-int sm_codegen_var_sp (SmCodegen* gen, int sp, int x);
+int sm_codegen_sp_get (SmCodegen* gen, int x, const char* cast);
+void sm_codegen_sp_set (SmCodegen* gen, int x, int v, const char* cast);
+void sm_codegen_fin_sp (SmCodegen* gen, int x, int v, const char* cast);
+void sm_codegen_var_sp (SmCodegen* gen, int x);
+void sm_codegen_set_stack_pointer (SmCodegen* gen, int x);
 void sm_codegen_enter (SmCodegen* gen, int closure);
 
 int sm_codegen_begin_closure_func (SmCodegen* gen);
@@ -54,7 +55,7 @@ int sm_codegen_create_closure (SmCodegen* gen, int closureid, int prealloc);
 int sm_codegen_create_custom_closure (SmCodegen* gen, int scope_size, int closureid);
 
 void sm_codegen_init_update_frame (SmCodegen* gen);
-int sm_codegen_push_update_frame (SmCodegen* gen, int sp, int offset);
+int sm_codegen_push_update_frame (SmCodegen* gen, int offset);
 
 void sm_codegen_debug (SmCodegen* gen, const char* fmt, int var, const char* cast);
 

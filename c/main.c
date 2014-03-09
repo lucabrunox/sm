@@ -13,7 +13,7 @@ int main() {
 	/* sm_lexer_init (&lexer, "id=x:x; id 'asd'"); */
 	/* sm_lexer_init (&lexer, "dsa='foo'; asd=(id = x: x; id); asd dsa"); */
 	/* sm_lexer_init (&lexer, "asd=32; dsa=32; asd == dsa"); */
-	/* sm_lexer_init (&lexer, "asd = 'foo\\n'; dsa = x: (we='bar\\n'; asd); dsa"); */
+	/* sm_lexer_init (&lexer, "asd = 'foo\n'; dsa = x: (we='bar\n'; asd); dsa"); */
 	/* sm_lexer_init (&lexer, "if 22 > 3 then eos else 'bar'"); */
 	sm_lexer_init (&lexer, "fst=s: x,_=s; x; snd=s: _,x=s; x; l=[123,123]; asd=fst l; (fst l) == (snd l)");
 	SmParser* parser = sm_parser_new ();

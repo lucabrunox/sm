@@ -8,6 +8,7 @@
 
 typedef struct {
 	int use_temps;
+	int sp;
 } SmClosureData;
 
 struct _SmCodegen {
@@ -18,6 +19,7 @@ struct _SmCodegen {
 	GQueue* closure_stack;
 	int cur_scopeid;
 	int next_closureid;
+	int sp;
 };
 
 SmCodegen* sm_codegen_new (SmCodegenOpts opts) {
@@ -42,14 +44,13 @@ SmScope* sm_codegen_get_scope (SmCodegen* gen) {
 }
 
 int sm_codegen_load_sp (SmCodegen* gen) {
-	GET_CODE;
-	return LOAD("i64** @sp");
+	return gen->sp;
 }
 
-int sm_codegen_sp_get (SmCodegen* gen, int sp, int x, const char* cast) {
+int sm_codegen_sp_get (SmCodegen* gen, int x, const char* cast) {
 	GET_CODE;
 	COMMENT("sp[%d]", x);
-	sp = GETPTR("i64* %%%d, i32 %d", sp, x);
+	int sp = GETPTR("i64* %%%d, i32 %d", gen->sp, x);
 	int val = LOAD("i64* %%%d", sp);
 	if (cast) {
 		val = TOPTR("i64 %%%d", "%s", val, cast);
@@ -57,49 +58,46 @@ int sm_codegen_sp_get (SmCodegen* gen, int sp, int x, const char* cast) {
 	return val;
 }
 
-void sm_codegen_sp_set (SmCodegen* gen, int sp, int x, int v, const char* cast) {
+void sm_codegen_sp_set (SmCodegen* gen, int x, int v, const char* cast) {
 	GET_CODE;
 	COMMENT("sp[%d] = %%%d", x, v);
 	if (cast) {
 		v = TOINT("%s %%%d", "i64", cast, v);
 	}
-	sp = GETPTR("i64* %%%d, i32 %d", sp, x)
+	int sp = GETPTR("i64* %%%d, i32 %d", gen->sp, x)
 	STORE("i64 %%%d", "i64* %%%d", v, sp);
 }
 
 // set and update the sp
-int sm_codegen_fin_sp (SmCodegen* gen, int sp, int x, int v, const char* cast) {
+void sm_codegen_fin_sp (SmCodegen* gen, int x, int v, const char* cast) {
 	GET_CODE;
 	COMMENT("sp[%d] = %%%d", x, v);
 	if (cast) {
 		v = TOINT("%s %%%d", "i64", cast, v);
 	}
-	sp = GETPTR("i64* %%%d, i32 %d", sp, x)
-	STORE("i64 %%%d", "i64* %%%d", v, sp);
-	if (x) {
-		COMMENT("sp += %d", x);
-		STORE("i64* %%%d", "i64** @sp", sp);
-	}
-	return sp;
+	gen->sp = GETPTR("i64* %%%d, i32 %d", gen->sp, x)
+	STORE("i64 %%%d", "i64* %%%d", v, gen->sp);
 }
 
-int sm_codegen_var_sp (SmCodegen* gen, int sp, int x) {
+void sm_codegen_var_sp (SmCodegen* gen, int x) {
 	if (!x) {
-		return sp;
+		return;
 	}
 	
 	GET_CODE;
 	COMMENT("sp += %d", x);
-	sp = GETPTR("i64* %%%d, i32 %d", sp, x);
-	STORE("i64* %%%d", "i64** @sp", sp);
-	return sp;
+	gen->sp = GETPTR("i64* %%%d, i32 %d", gen->sp, x);
+}
+
+void sm_codegen_set_stack_pointer (SmCodegen* gen, int x) {
+	gen->sp = x;
 }
 
 void sm_codegen_enter (SmCodegen* gen, int closure) {
 	GET_CODE;
 	int funcptr = GETPTR("%%closure* %%%d, i32 0, i32 %d", closure, CLOSURE_FUNC);
 	int func = LOAD("%%closurefunc* %%%d", funcptr);
-	TAILCALL_ ("void %%%d(%%closure* %%%d)", func, closure);
+	TAILCALL_ ("void %%%d(%%closure* %%%d, i64* %%%d)", func, closure, gen->sp);
 	RET("void");
 }
 
@@ -124,12 +122,16 @@ int sm_codegen_begin_closure_func (SmCodegen* gen) {
 	
 	int closureid = gen->next_closureid++;
 	PUSH_NEW_BLOCK;
-	BEGIN_FUNC("fastcc void", "closure_%d_eval", "%%closure*", closureid);
+	BEGIN_FUNC("fastcc void", "closure_%d_eval", "%%closure*, i64*", closureid);
 	
-	(void) sm_code_get_temp (code); // first param
+	(void) sm_code_get_temp (code); // first param, self closure
+	(void) sm_code_get_temp (code); // second param, stack pointer
 	LABEL("entry");
 	
 	SmClosureData* data = g_new0 (SmClosureData, 1);
+	// save sp
+	data->sp = gen->sp;
+	gen->sp = 1;
 	g_queue_push_tail (gen->closure_stack, data);
 	/* if (!nparams) { */
 	/* // next call will point to the cache */
@@ -151,7 +153,8 @@ void sm_codegen_end_closure_func (SmCodegen* gen) {
 	END_FUNC;
 	POP_BLOCK;
 	
-	g_queue_pop_tail (gen->closure_stack);
+	SmClosureData* data = g_queue_pop_tail (gen->closure_stack);
+	gen->sp = data->sp;
 }
 
 
@@ -189,14 +192,13 @@ static int create_thunk_cache_func (SmCodegen* gen) {
 	GET_CODE;
 	thunk_cache = sm_codegen_begin_closure_func (gen);
 	COMMENT("cached func");
-	int sp = LOADSP;
-	RUNDBG("-> cached func, sp=%p\n", sp, "i64*");
-	int cont = SPGET(sp, 0, "%closure*");
+	RUNDBG("-> cached func, sp=%p\n", LOADSP, "i64*");
+	int cont = SPGET(0, "%closure*");
 
 	COMMENT("get cached object");
 	int ptr = GETPTR("%%closure* %%0, i32 0, i32 %d", CLOSURE_CACHE);
 	int obj = LOAD("%%tagged* %%%d", ptr);
-	SPSET(sp, 0, obj, NULL);
+	SPSET(0, obj, NULL);
 	
 	RUNDBG("enter cont %p\n", cont, "%closure*");
 	ENTER(cont);
@@ -215,11 +217,10 @@ void sm_codegen_init_update_frame (SmCodegen* gen) {
 	GET_CODE;
 	int closureid = sm_codegen_begin_closure_func (gen);
 	COMMENT("update func");
-	int sp = LOADSP;
-	RUNDBG("-> update func, sp=%p\n", sp, "i64*");
-	int obj = SPGET(sp, 0, NULL);
-	int thunk = SPGET(sp, 1, "%closure*");
-	int cont = SPGET(sp, 2, "%closure*");
+	RUNDBG("-> update func, sp=%p\n", LOADSP, "i64*");
+	int obj = SPGET(0, NULL);
+	int thunk = SPGET(1, "%closure*");
+	int cont = SPGET(2, "%closure*");
 	
 	COMMENT("change function to use the cache");
 	int funcptr = GETPTR("%%closure* %%%d, i32 0, i32 %d", thunk, CLOSURE_FUNC);
@@ -231,7 +232,7 @@ void sm_codegen_init_update_frame (SmCodegen* gen) {
 
 	RUNDBG("object to cache %p\n", obj, NULL);
 	
-	FINSP(sp, 2, obj, NULL);
+	FINSP(2, obj, NULL);
 	RUNDBG("enter cont %p\n", cont, "%closure*");
 	ENTER(cont);
 	sm_codegen_end_closure_func (gen);
@@ -246,13 +247,13 @@ void sm_codegen_init_update_frame (SmCodegen* gen) {
 	STORE("%%closure* %%%d", "%%closure** @updatethunk", closure);
 }
 
-int sm_codegen_push_update_frame (SmCodegen* gen, int sp, int offset) {
+int sm_codegen_push_update_frame (SmCodegen* gen, int offset) {
 	GET_CODE;
 	COMMENT("push update frame");
-	SPSET(sp, offset, 0, "%closure*");
+	SPSET(offset, 0, "%closure*");
 
 	int update_thunk = LOAD("%%closure** @updatethunk");
-	SPSET(sp, offset-1, update_thunk, "%closure*");
+	SPSET(offset-1, update_thunk, "%closure*");
 
 	return offset-2;
 }
@@ -285,10 +286,9 @@ int sm_codegen_create_closure (SmCodegen* gen, int closureid, int prealloc) {
 			}
 			
 			COMMENT("capture params+locals");
-			int sp = LOADSP;
 			for (int i=0; i < local_size; i++) {
 				int destptr = GETPTR("%%closure* %%%d, i32 0, i32 %d, i32 %d", closure, CLOSURE_SCOPE, i+parent_size);
-				int src = SPGET(sp, i, "%closure*");
+				int src = SPGET(i, "%closure*");
 				STORE("%%closure* %%%d", "%%closure** %%%d", src, destptr);
 			}
 		} else {

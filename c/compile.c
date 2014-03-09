@@ -127,12 +127,11 @@ static int create_true_closure (SmCodegen* gen) {
 	GET_CODE;
 	int closureid = sm_codegen_begin_closure_func (gen);
 	COMMENT("true closure");
-	int sp = LOADSP;
-	int cont = SPGET(sp, 0, "%closure*");
-	RUNDBG("-> true object, sp=%p\n", sp, "i64*");
+	int cont = SPGET(0, "%closure*");
+	RUNDBG("-> true object, sp=%p\n", LOADSP, "i64*");
 
 	COMMENT("set true object on the stack");
-	STORE("i64 %llu", "i64* %%%d", OBJ_TRUE, sp);
+	STORE("i64 %llu", "i64* %%%d", OBJ_TRUE, LOADSP);
 	
 	COMMENT("enter cont");
 	ENTER(cont);
@@ -151,12 +150,11 @@ static int create_false_closure (SmCodegen* gen) {
 	GET_CODE;
 	int closureid = sm_codegen_begin_closure_func (gen);
 	COMMENT("false closure");
-	int sp = LOADSP;
-	int cont = SPGET(sp, 0, "%closure*");
-	RUNDBG("-> false object, sp=%p\n", sp, "i64*");
+	int cont = SPGET(0, "%closure*");
+	RUNDBG("-> false object, sp=%p\n", LOADSP, "i64*");
 
 	COMMENT("set false object on the stack");
-	STORE("i64 %llu", "i64* %%%d", OBJ_FALSE, sp);
+	STORE("i64 %llu", "i64* %%%d", OBJ_FALSE, LOADSP);
 	
 	COMMENT("enter cont");
 	ENTER(cont);
@@ -175,12 +173,11 @@ static int create_eos_closure (SmCodegen* gen) {
 	GET_CODE;
 	int closureid = sm_codegen_begin_closure_func (gen);
 	COMMENT("eos closure");
-	int sp = LOADSP;
-	int cont = SPGET(sp, 0, "%closure*");
-	RUNDBG("-> eos object, sp=%p\n", sp, "i64*");
+	RUNDBG("-> eos object, sp=%p\n", LOADSP, "i64*");
+	int cont = SPGET(0, "%closure*");
 
 	COMMENT("set eos object on the stack");
-	STORE("i64 %llu", "i64* %%%d", OBJ_EOS, sp);
+	STORE("i64 %llu", "i64* %%%d", OBJ_EOS, LOADSP);
 	
 	COMMENT("enter cont");
 	ENTER(cont);
@@ -255,14 +252,13 @@ static int create_prim_print (SmCodegen* gen) {
 	
 	int directid = sm_codegen_begin_closure_func (gen);
 	COMMENT("real print func");
-	int sp = LOADSP;
 	COMMENT("get string");
-	int object = SPGET(sp, 0, NULL);
+	int object = SPGET(0, NULL);
 	RUNDBG("-> real print, object=%p\n", object, NULL);
-	RUNDBG("sp=%p\n", sp, "i64*");
+	RUNDBG("sp=%p\n", LOADSP, "i64*");
 
 	COMMENT("get continuation");
-	int cont = SPGET(sp, 1, "%closure*");
+	int cont = SPGET(1, "%closure*");
 	RUNDBG("cont=%p\n", cont, "%closure*");
 
 	int tag = EMIT("and %%tagged %%%d, %llu", object, TAG_MASK);
@@ -318,7 +314,7 @@ static int create_prim_print (SmCodegen* gen) {
 
 	LABEL("continue");
 	COMMENT("put object back in the stack");
-	FINSP(sp, 1, object, NULL);
+	FINSP(1, object, NULL);
 	RUNDBG("enter %p\n", cont, "%closure*");
 	ENTER(cont);
 	sm_codegen_end_closure_func (gen);
@@ -339,14 +335,13 @@ static int create_print_call (SmCodegen* gen) {
 	COMMENT("print closure func");
 	COMMENT("create direct closure");
 
-	int sp = LOADSP;
 	COMMENT("get string thunk");
-	int str = SPGET(sp, 0, "%closure*");
-	RUNDBG("-> print closure, sp=%p\n", sp, "i64*");
+	RUNDBG("-> print closure, sp=%p\n", LOADSP, "i64*");
+	int str = SPGET(0, "%closure*");
 
 	COMMENT("push direct print closure");
 	int direct = create_prim_print (gen);
-	FINSP(sp, 0, direct, "%closure*");
+	SPSET(0, direct, "%closure*");
 
 	COMMENT("enter string");
 	RUNDBG("enter string %p\n", str, "%closure*");
@@ -365,15 +360,14 @@ static int create_prim_binary (SmCodegen* gen, const char* op) {
 	
 	int closureid = sm_codegen_begin_closure_func (gen);
 	COMMENT("binary %s func", op);
-	int sp = LOADSP;
-	RUNDBG("-> prim binary, sp=%p\n", sp, "i64*");
+	RUNDBG("-> prim binary, sp=%p\n", LOADSP, "i64*");
 
 	COMMENT("right op");
-	int right = SPGET(sp, 0, NULL);
+	int right = SPGET(0, NULL);
 	COMMENT("left op");
-	int left = SPGET(sp, 1, NULL);
+	int left = SPGET(1, NULL);
 	COMMENT("get cont");
-	int cont = SPGET(sp, 2, "%closure*");
+	int cont = SPGET(2, "%closure*");
 
 	#define CASE(x) (!strcmp(op, x))
 	const char* cmp;
@@ -395,7 +389,7 @@ static int create_prim_binary (SmCodegen* gen, const char* op) {
 	result = EMIT("or i64 %%%d, %llu", result, TAG_OBJ);
 	
 	COMMENT("set result");
-	FINSP(sp, 2, result, NULL);
+	FINSP(2, result, NULL);
 
 	RUNDBG("enter cont %p\n", cont, "%closure*");
 	ENTER(cont);
@@ -416,10 +410,9 @@ static int create_prim_cond (SmCodegen* gen) {
 	
 	int closureid = sm_codegen_begin_closure_func (gen);
 	COMMENT("prim cond func");
-	int sp = LOADSP;
-	RUNDBG("-> prim cond, sp=%p\n", sp, "i64*");
+	RUNDBG("-> prim cond, sp=%p\n", LOADSP, "i64*");
 
-	int cond = SPGET(sp, 0, NULL);
+	int cond = SPGET(0, NULL);
 
 	SmVar condvar = { .id=cond, .isthunk=FALSE, .type=TYPE_UNK };
 	cond = try_var (gen, condvar, TYPE_BOOL);
@@ -427,14 +420,14 @@ static int create_prim_cond (SmCodegen* gen) {
 
 	int cont;
 	LABEL("btrue");
-	cont = SPGET(sp, 1, "%closure*");
-	VARSP(sp, 3);
+	cont = SPGET(1, "%closure*");
+	VARSP(3);
 	RUNDBG("enter true %p\n", cont, "%closure*");
 	ENTER(cont);
 
 	LABEL("bfalse");
-	cont = SPGET(sp, 2, "%closure*");
-	VARSP(sp, 3);
+	cont = SPGET(2, "%closure*");
+	VARSP(3);
 	RUNDBG("enter false %p\n", cont, "%closure*");
 	ENTER(cont);
 	
@@ -477,10 +470,7 @@ DEFUNC(compile_member_expr, SmMemberExpr) {
 
 	int parent_size = sm_scope_get_size (sm_scope_get_parent (sm_codegen_get_scope (gen)));
 
-	{
-		int sp = LOADSP;
-		RUNDBG(g_strdup_printf("-> member %s, sp=%%p\n", expr->name), sp, "i64*");
-	}
+	RUNDBG(g_strdup_printf("-> member %s, sp=%%p\n", expr->name), LOADSP, "i64*");
 	int obj;
 	if (sm_codegen_get_use_temps (gen)) {
 		if (varid < parent_size) {
@@ -492,8 +482,7 @@ DEFUNC(compile_member_expr, SmMemberExpr) {
 		} else {
 			// from the stack
 			COMMENT("member %s(%d) from stack", expr->name, varid);
-			int sp = LOADSP;
-			obj = SPGET(sp, varid-parent_size, "%closure*");
+			obj = SPGET(varid-parent_size, "%closure*");
 			RUNDBG("stack member %p\n", obj, "%closure*");
 		}
 	} else {
@@ -510,9 +499,8 @@ static int create_list_at_closure (SmCodegen* gen, int pos) {
 
 	int closureid = sm_codegen_begin_closure_func (gen);
 	COMMENT("list at func for pos %d", pos);
-	int sp = LOADSP;
-	RUNDBG("-> list at func, sp=%p\n", sp, "i64*");
-	int list = SPGET(sp, 0, NULL);
+	RUNDBG("-> list at func, sp=%p\n", LOADSP, "i64*");
+	int list = SPGET(0, NULL);
 	SmVar var = { .id=list, .isthunk=FALSE, .type=TYPE_UNK };
 	list = try_var (gen, var, TYPE_LST);
 
@@ -521,7 +509,7 @@ static int create_list_at_closure (SmCodegen* gen, int pos) {
 	elem = LOAD("%%closure** %%%d", elem);
 
 	// pop argument
-	VARSP(sp, 1);
+	VARSP(1);
 
 	RUNDBG("enter elem %p\n", elem, "%closure*");
 	ENTER(elem);
@@ -537,8 +525,7 @@ static void create_match_closure (SmCodegen* gen, int prealloc, int thunk, int p
 
 	int closureid = sm_codegen_begin_closure_func (gen);
 	COMMENT("match func for thunk %%%d at pos %d", thunk, pos);
-	int sp = LOADSP;
-	RUNDBG("-> match func, sp=%p\n", sp, "i64*");
+	RUNDBG("-> match func, sp=%p\n", LOADSP, "i64*");
 	
 	COMMENT("get list thunk from closure");
 	int list = GETPTR("%%closure* %%0, i32 0, i32 %d, i32 0", CLOSURE_SCOPE);
@@ -546,7 +533,7 @@ static void create_match_closure (SmCodegen* gen, int prealloc, int thunk, int p
 
 	COMMENT("push list at %d closure", pos);
 	int posclo = create_list_at_closure (gen, pos);
-	FINSP(sp, -1, posclo, "%closure*");
+	FINSP(-1, posclo, "%closure*");
 	
 	RUNDBG("enter %p\n", list, "%closure*");
 	ENTER(list);
@@ -574,8 +561,7 @@ DEFUNC(compile_seq_expr, SmSeqExpr) {
 	int closureid = sm_codegen_begin_closure_func (gen);
 	sm_codegen_set_use_temps (gen, TRUE);
 	COMMENT("seq/func closure");
-	int sp = LOADSP;
-	RUNDBG("-> seq, sp=%p\n", sp, "i64*");
+	RUNDBG("-> seq, sp=%p\n", LOADSP, "i64*");
 	
 	int nlocals = 0;
 	/* assign ids to locals and preallocate thunks */
@@ -599,7 +585,7 @@ DEFUNC(compile_seq_expr, SmSeqExpr) {
 			int alloc = sm_codegen_allocate_closure (gen);
 			temp_diff = alloc-cur_alloc;
 			cur_alloc = alloc;
-			SPSET(sp, -nlocals-1, alloc, "%closure*");
+			SPSET(-nlocals-1, alloc, "%closure*");
 
 			sm_scope_set (scope, name, nlocals++);
 		}
@@ -619,7 +605,7 @@ DEFUNC(compile_seq_expr, SmSeqExpr) {
 	}
 	
 	// make room for locals
-	sp = VARSP(sp, -nlocals);
+	VARSP(-nlocals);
 
 	/* visit assignments */
 	for (int i=0; i < expr->assigns->len; i++) {
@@ -649,7 +635,7 @@ DEFUNC(compile_seq_expr, SmSeqExpr) {
 	COMMENT("visit seq result");
 	SmVar result = VISIT(expr->result);
 	COMMENT("pop parameters and locals");
-	VARSP(sp, nparams+nlocals);
+	VARSP(nparams+nlocals);
 	COMMENT("enter result");
 	RUNDBG("enter %p\n", result.id, "%closure*");
 	ENTER(result.id);
@@ -679,14 +665,13 @@ DEFUNC(compile_func_expr, SmFuncExpr) {
 	int closureid = sm_codegen_begin_closure_func (gen);
 	COMMENT("func thunk");
 	COMMENT("get cont");
-	int sp = LOADSP;
-	int cont = SPGET(sp, 0, "%closure*");
-	RUNDBG("-> func, sp=%p\n", sp, "i64*");
+	int cont = SPGET(0, "%closure*");
+	RUNDBG("-> func, sp=%p\n", 1, "i64*");
 	
 	COMMENT("visit body");
 	SmVar result = VISIT(expr->body);
 	COMMENT("push func object");
-	SPSET(sp, 0, result.id, NULL);
+	SPSET(0, result.id, NULL);
 	
 	COMMENT("enter cont");
 	RUNDBG("enter %p\n", cont, "%closure*");
@@ -703,11 +688,10 @@ DEFUNC(compile_int_literal, SmLiteral) {
 
 	int closureid = sm_codegen_begin_closure_func (gen);
 	COMMENT("int thunk code for %d\n", expr->intval);
-	int sp = LOADSP;
-	RUNDBG("-> int literal, sp=%p\n", sp, "i64*");
+	RUNDBG("-> int literal, sp=%p\n", LOADSP, "i64*");
 	
-	int cont = SPGET(sp, 0, "%closure*");
-	STORE("i64 %llu", "i64* %%%d", TAG_INT|expr->intval, sp);
+	int cont = SPGET(0, "%closure*");
+	STORE("i64 %llu", "i64* %%%d", TAG_INT|expr->intval, LOADSP);
 	
 	RUNDBG("enter %p\n", cont, "%closure*");
 	ENTER(cont);
@@ -734,15 +718,14 @@ DEFUNC(compile_str_literal, SmLiteral) {
 	// expression code
 	int closureid = sm_codegen_begin_closure_func (gen);
 	COMMENT("string thunk code for '%s' string", expr->str);
-	int sp = LOADSP;
-	RUNDBG("-> string literal, sp=%p\n", sp, "i64*");
+	RUNDBG("-> string literal, sp=%p\n", LOADSP, "i64*");
 	
-	int cont = SPGET(sp, 0, "%closure*");
+	int cont = SPGET(0, "%closure*");
 	int obj = GETPTR("[%d x i8]* @.const%d, i32 0, i32 0", len, consttmp);
 	obj = EMIT ("ptrtoint i8* %%%d to %%tagged", obj);
 	/* obj = EMIT ("lshr exact %%tagged %%%d, 3", obj); */
 	obj = EMIT ("or %%tagged %%%d, %llu", obj, TAG_STR);
-	SPSET(sp, 0, obj, NULL);
+	SPSET(0, obj, NULL);
 	
 	RUNDBG("enter %p\n", cont, "%closure*");
 	ENTER(cont);
@@ -760,10 +743,9 @@ static int create_real_call_closure (SmCodegen* gen, SmCallExpr* expr) {
 	int closureid = sm_codegen_begin_closure_func (gen);
 	COMMENT("real call func");
 
-	int sp = LOADSP;
 	COMMENT("get func");
-	int func = SPGET(sp, 0, NULL);
-	RUNDBG("-> real call, sp=%p\n", sp, "i64*");
+	RUNDBG("-> real call, sp=%p\n", LOADSP, "i64*");
+	int func = SPGET(0, NULL);
 
 	SmVar funcvar = { .id=func, .isthunk=FALSE, .type=TYPE_UNK };
 	func = try_var (gen, funcvar, TYPE_FUN);
@@ -772,11 +754,11 @@ static int create_real_call_closure (SmCodegen* gen, SmCallExpr* expr) {
 	for (int i=0; i < expr->args->len; i++) {
 		COMMENT("visit arg %d", i);
 		SmVar arg = VISIT(EXPR(expr->args->pdata[i]));
-		SPSET(sp, i-expr->args->len+1, arg.id, "%closure*");
+		SPSET(i-expr->args->len+1, arg.id, "%closure*");
 	}
 	
 	COMMENT("push args onto the stack");
-	VARSP(sp, -expr->args->len+1);
+	VARSP(-expr->args->len+1);
 	COMMENT("enter real func");
 	RUNDBG("enter %p\n", func, "%closure*");
 	ENTER(func);
@@ -793,16 +775,15 @@ DEFUNC(compile_call_expr, SmCallExpr) {
 
 	int closureid = sm_codegen_begin_closure_func (gen);
 	COMMENT("call thunk func");
-	int sp = LOADSP;
-	RUNDBG("-> call, sp=%p\n", sp, "i64*");
+	RUNDBG("-> call, sp=%p\n", LOADSP, "i64*");
 
-	int off = sm_codegen_push_update_frame (gen, sp, -1);
+	int off = sm_codegen_push_update_frame (gen, -1);
 
 	COMMENT("visit func");
 	SmVar func = VISIT(expr->func);
 
 	int realfunc = create_real_call_closure (gen, expr);
-	FINSP(sp, off, realfunc, "%closure*");
+	FINSP(off, realfunc, "%closure*");
 	
 	COMMENT("force func");
 	RUNDBG("enter %p\n", func.id, "%closure*");
@@ -822,17 +803,16 @@ DEFUNC(compile_binary_expr, SmBinaryExpr) {
 	// eval left closure
 	int evaleft = sm_codegen_begin_closure_func (gen);
 	COMMENT("eval right op %s thunk func", expr->op);
-	int sp = LOADSP;
-	RUNDBG("-> right op thunk, sp=%p\n", sp, "i64*");
-	int left = SPGET(sp, 0, NULL);
-	int right = SPGET(sp, 1, "%closure*");
+	RUNDBG("-> right op thunk, sp=%p\n", LOADSP, "i64*");
+	int left = SPGET(0, NULL);
+	int right = SPGET(1, "%closure*");
 
 	COMMENT("swap");
-	SPSET(sp, 1, left, NULL);
+	SPSET(1, left, NULL);
 	
 	COMMENT("create prim binary closure");
 	int prim = create_prim_binary (gen, expr->op);
-	SPSET(sp, 0, prim, "%closure*");
+	SPSET(0, prim, "%closure*");
 
 	COMMENT("enter right");
 	RUNDBG("enter right %p\n", right, "%closure*");
@@ -841,8 +821,7 @@ DEFUNC(compile_binary_expr, SmBinaryExpr) {
 
 	// binary closure
 	int closureid = sm_codegen_begin_closure_func (gen);
-	sp = LOADSP;
-	RUNDBG("-> binary func, sp=%p\n", sp, "i64*");
+	RUNDBG("-> binary func, sp=%p\n", LOADSP, "i64*");
 	
 	COMMENT("visit left");
 	SmVar leftvar = VISIT(expr->left);
@@ -851,8 +830,8 @@ DEFUNC(compile_binary_expr, SmBinaryExpr) {
 	COMMENT("create eval left thunk");
 	int evalclo = sm_codegen_create_closure (gen, evaleft, -1);
 
-	SPSET(sp, -1, rightvar.id, "%closure*");
-	FINSP(sp, -2, evalclo, "%closure*");
+	SPSET(-1, rightvar.id, "%closure*");
+	FINSP(-2, evalclo, "%closure*");
 	
 	COMMENT("force left");
 	RUNDBG("enter %p\n", leftvar.id, "%closure*");
@@ -871,7 +850,6 @@ DEFUNC(compile_cond_expr, SmCondExpr) {
 
 	int closureid = sm_codegen_begin_closure_func (gen);
 	COMMENT("cond closure func");
-	int sp = LOADSP;
 
 	COMMENT("visit cond");
 	SmVar cond = VISIT(expr->cond);
@@ -882,9 +860,9 @@ DEFUNC(compile_cond_expr, SmCondExpr) {
 
 	COMMENT("create prim cond closure");
 	int prim = create_prim_cond (gen);
-	SPSET(sp, -1, falsebody.id, "%closure*");
-	SPSET(sp, -2, truebody.id, "%closure*");
-	FINSP(sp, -3, prim, "%closure*");
+	SPSET(-1, falsebody.id, "%closure*");
+	SPSET(-2, truebody.id, "%closure*");
+	FINSP(-3, prim, "%closure*");
 	
 	COMMENT("force cond");
 	RUNDBG("enter cond %p\n", cond.id, "%closure*");
@@ -902,9 +880,8 @@ DEFUNC(compile_list_expr, SmListExpr) {
 
 	int closureid = sm_codegen_begin_closure_func (gen);
 	COMMENT("list closure func");
-	int sp = LOADSP;
-	int cont = SPGET(sp, 0, "%closure*");
-	RUNDBG("-> list closure, sp=%p\n", sp, "i64*");
+	RUNDBG("-> list closure, sp=%p\n", LOADSP, "i64*");
+	int cont = SPGET(0, "%closure*");
 	
 	COMMENT("allocate list of size %d", expr->elems->len);
 	int list = CALL("i8* @aligned_alloc(i32 8, i32 %d)", (int)(sizeof(void*)*LIST_ELEMS + sizeof(void*)*expr->elems->len));
@@ -927,7 +904,7 @@ DEFUNC(compile_list_expr, SmListExpr) {
 	list = TOINT("%%list* %%%d", "%%tagged", list);
 	list = EMIT("or %%tagged %%%d, %llu", list, TAG_LST);
 
-	SPSET(sp, 0, list, NULL);
+	SPSET(0, list, NULL);
 	
 	RUNDBG("enter cont %p\n", cont, "%closure*");
 	ENTER(cont);
@@ -960,9 +937,7 @@ static int create_nop_closure (SmCodegen* gen) {
 	int nopid = sm_codegen_begin_closure_func (gen);
 	
 	COMMENT("nop func"); // discards one object from the stack
-	int sp = LOADSP;
-	RUNDBG("nop, sp=%d\n", sp, "i64*");
-	VARSP(sp, 1);
+	RUNDBG("nop, sp=%d\n", LOADSP, "i64*");
 	// end of the program
 	RET("void");
 
@@ -990,9 +965,8 @@ SmJit* sm_compile (SmCodegenOpts opts, const char* name, SmExpr* expr) {
 	DECLARE ("void @llvm.donothing() nounwind readnone");
 	DECLARE ("void @llvm.debugtrap() nounwind");
 	EMIT_ ("%%tagged = type i64");
-	EMIT_ ("%%closurefunc = type void (%%closure*)*");
+	EMIT_ ("%%closurefunc = type void (%%closure*, i64*)*");
 	EMIT_ ("@stack = global i64* null, align 8");
-	EMIT_ ("@sp = global i64* null, align 8");
 	DEFINE_STRUCT ("closure", "%%closurefunc, %%tagged, [0 x %%closure*]"); // func, cached object, scope
 	DEFINE_STRUCT ("list", "i64, [0 x %%closure*]"); // size, thunks
 	POP_BLOCK;
@@ -1007,23 +981,24 @@ SmJit* sm_compile (SmCodegenOpts opts, const char* name, SmExpr* expr) {
 	stack = BITCAST("i8* %%%d", "i64*", stack);
 	STORE("i64* %%%d", "i64** @stack", stack);
 	
-	STORE("i64* %%%d", "i64** @sp", stack);
-	int sp = LOADSP;
-	sp = VARSP(sp, 4096-8);
-	RUNDBG("bottom sp=%p\n", sp, "i64*");
+	/* STORE("i64* %%%d", "i64** @sp", stack); */
+	sm_codegen_set_stack_pointer (gen, stack);
+	VARSP(4096-8);
+	RUNDBG("top stack=%p\n", stack, "i64*");
+	RUNDBG("bottom sp=%p\n", LOADSP, "i64*");
 
 	int nopclo = create_nop_closure (gen);
 	int printclo = create_print_call (gen);
 	sm_codegen_init_update_frame (gen);
 	
-	SPSET(sp, 0, nopclo, "%closure*");
+	SPSET(0, nopclo, "%closure*");
 
 	COMMENT("visit root expression");
 	SmVar var = VISIT(expr);
 	COMMENT("push root expression");
-	sp = FINSP(sp, -1, var.id, "%closure*");
+	FINSP(-1, var.id, "%closure*");
 	RUNDBG("root expr %p\n", var.id, "%closure*");
-	RUNDBG("sp=%p\n", sp, "i64*");
+	RUNDBG("sp=%p\n", LOADSP, "i64*");
 
 	COMMENT("enter print");
 	ENTER(printclo);

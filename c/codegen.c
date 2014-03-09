@@ -154,6 +154,20 @@ void sm_codegen_end_closure_func (SmCodegen* gen) {
 	g_queue_pop_tail (gen->closure_stack);
 }
 
+
+int sm_codegen_create_custom_closure (SmCodegen* gen, int scope_size, int closureid) {
+	GET_CODE;
+	
+	int closure = CALL("i8* @aligned_alloc(i32 8, i32 %lu)", sizeof(void*)*CLOSURE_SCOPE+sizeof(void*)*scope_size);
+	closure = BITCAST("i8* %%%d", "%%closure*", closure);
+
+	COMMENT("store update function");
+	int funcptr = GETPTR("%%closure* %%%d, i32 0, i32 %d", closure, CLOSURE_FUNC);
+	STORE("%%closurefunc " FUNC("closure_%d_eval"), "%%closurefunc* %%%d", closureid, funcptr);
+
+	return closure;
+}
+
 int sm_codegen_allocate_closure (SmCodegen* gen) {
 	GET_CODE;
 	
@@ -222,14 +236,8 @@ void sm_codegen_init_update_frame (SmCodegen* gen) {
 	ENTER(cont);
 	sm_codegen_end_closure_func (gen);
 
-	COMMENT("alloc update closure");
-	int closure = CALL("i8* @aligned_alloc(i32 8, i32 %lu)", sizeof(void*)*CLOSURE_SCOPE);
-	closure = BITCAST("i8* %%%d", "%%closure*", closure);
-
-	COMMENT("store update function");
-	funcptr = GETPTR("%%closure* %%%d, i32 0, i32 %d", closure, CLOSURE_FUNC);
-	STORE("%%closurefunc " FUNC("closure_%d_eval"), "%%closurefunc* %%%d", closureid, funcptr);
-
+	int closure = sm_codegen_create_custom_closure (gen, 0, closureid);
+	
 	// set global variable to the update closure func
 	PUSH_BLOCK(sm_codegen_get_decls_block (gen));
 	EMIT_ ("@updatethunk = global %%closure* null, align 8");

@@ -323,7 +323,7 @@ static int create_prim_print (SmCodegen* gen) {
 	ENTER(cont);
 	sm_codegen_end_closure_func (gen);
 
-	directclo = sm_codegen_create_closure (gen, directid, -1);
+	directclo = sm_codegen_create_custom_closure (gen, 0, directid);
 	return directclo;
 }
 
@@ -354,7 +354,7 @@ static int create_print_call (SmCodegen* gen) {
 	sm_codegen_end_closure_func (gen);
 
 	COMMENT("create print closure");
-	printclo = sm_codegen_create_closure (gen, printid, -1);
+	printclo = sm_codegen_create_custom_closure (gen, 0, printid);
 	return printclo;
 }
 
@@ -528,14 +528,7 @@ static int create_list_at_closure (SmCodegen* gen, int pos) {
 	sm_codegen_end_closure_func (gen);
 
 	COMMENT("create match pos %d closure", pos);
-	int closure = CALL("i8* @aligned_alloc(i32 8, i32 %lu)",
-					 sizeof(void*)*CLOSURE_SCOPE);
-	closure = BITCAST("i8* %%%d", "%%closure*", closure);
-
-	COMMENT("store list at %d function", pos);
-	int funcptr = GETPTR("%%closure* %%%d, i32 0, i32 %d", closure, CLOSURE_FUNC);
-	STORE("%%closurefunc " FUNC("closure_%d_eval"), "%%closurefunc* %%%d", closureid, funcptr);
-
+	int closure = sm_codegen_create_custom_closure (gen, 0, closureid);
 	return closure;
 }
 
@@ -976,7 +969,7 @@ static int create_nop_closure (SmCodegen* gen) {
 	sm_codegen_end_closure_func (gen);
 	COMMENT("nop closure");
 	
-	int nopclo = sm_codegen_create_closure (gen, nopid, -1);
+	int nopclo = sm_codegen_create_custom_closure (gen, 0, nopid);
 	return nopclo;
 }
 

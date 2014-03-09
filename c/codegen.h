@@ -51,6 +51,7 @@ int sm_codegen_begin_closure_func (SmCodegen* gen);
 void sm_codegen_end_closure_func (SmCodegen* gen);
 int sm_codegen_allocate_closure (SmCodegen* gen);
 int sm_codegen_create_closure (SmCodegen* gen, int closureid, int prealloc);
+int sm_codegen_create_custom_closure (SmCodegen* gen, int scope_size, int closureid);
 
 void sm_codegen_init_update_frame (SmCodegen* gen);
 int sm_codegen_push_update_frame (SmCodegen* gen, int sp, int offset);

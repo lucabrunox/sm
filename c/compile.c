@@ -15,7 +15,6 @@
 #define DEFUNC(n,x) static SmVar n (SmCodegen* gen, x* expr, int prealloc)
 #define RETVAL(x,y,z) SmVar _res_var={.x, .y, .z}; return _res_var
 #define VISIT(x) call_compile_table (gen, EXPR(x), -1)
-#define RUNDBG(f,x,c) sm_codegen_debug(gen, f, x, c)
 
 /* Currently favoring doubles, will change in the future to favor either lists or functions */
 #define DBL_qNAN 0x7FF8000000000000ULL
@@ -273,14 +272,14 @@ static int create_prim_print (SmCodegen* gen) {
 	LABEL("bint");
 	int ptr = BITCAST("[%d x i8]* @.const%d", "i8*", int_len, int_str);
 	int num = EMIT("and %%tagged %%%d, %llu", object, OBJ_MASK);
-	RUNDBG("int=%llu\n", ptr, NULL);
+	RUNDBG("print int=%llu\n", num, NULL);
 	CALL ("i32 (i8*, ...)* @printf(i8* %%%d, i64 %%%d)", ptr, num);
 	BR ("label %%continue");
 	
 	LABEL("bstring");
 	ptr = EMIT("and %%tagged %%%d, %llu", object, OBJ_MASK);
 	ptr = TOPTR("i64 %%%d", "i8*", ptr);
-	RUNDBG("string=%p\n", ptr, "i8*");
+	RUNDBG("print string=%p\n", ptr, "i8*");
 	CALL ("i32 (i8*, ...)* @printf(i8* %%%d)", ptr);
 	BR ("label %%continue");
 
@@ -507,7 +506,7 @@ static int create_list_at_closure (SmCodegen* gen, int pos) {
 	int closureid = sm_codegen_begin_closure_func (gen);
 	COMMENT("list at func for pos %d", pos);
 	int sp = LOADSP;
-	RUNDBG("-> list at func, sp=%p\n", sp, NULL);
+	RUNDBG("-> list at func, sp=%p\n", sp, "i64*");
 	int list = SPGET(sp, 0, NULL);
 	SmVar var = { .id=list, .isthunk=FALSE, .type=TYPE_UNK };
 	list = try_var (gen, var, TYPE_LST);
@@ -541,7 +540,7 @@ static void create_match_closure (SmCodegen* gen, int prealloc, int thunk, int p
 	int closureid = sm_codegen_begin_closure_func (gen);
 	COMMENT("match func for thunk %%%d at pos %d", thunk, pos);
 	int sp = LOADSP;
-	RUNDBG("-> match func, sp=%p\n", sp, NULL);
+	RUNDBG("-> match func, sp=%p\n", sp, "i64*");
 	
 	COMMENT("get list thunk from closure");
 	int list = GETPTR("%%closure* %%0, i32 0, i32 %d, i32 0", CLOSURE_SCOPE);
@@ -762,7 +761,7 @@ static int create_real_call_closure (SmCodegen* gen, SmCallExpr* expr) {
 
 	SmVar funcvar = { .id=func, .isthunk=FALSE, .type=TYPE_UNK };
 	func = try_var (gen, funcvar, TYPE_FUN);
-	
+
 	COMMENT("set arguments");
 	for (int i=0; i < expr->args->len; i++) {
 		COMMENT("visit arg %d", i);
@@ -790,12 +789,15 @@ DEFUNC(compile_call_expr, SmCallExpr) {
 	COMMENT("call thunk func");
 	int sp = LOADSP;
 	RUNDBG("-> call, sp=%p\n", sp, "i64*");
-	
+
+	COMMENT("push update frame");
+	int off = sm_codegen_push_update_frame (gen, sp, -1);
+
 	COMMENT("visit func");
 	SmVar func = VISIT(expr->func);
 
 	int realfunc = create_real_call_closure (gen, expr);
-	FINSP(sp, -1, realfunc, "%closure*");
+	FINSP(sp, off, realfunc, "%closure*");
 	
 	COMMENT("force func");
 	RUNDBG("enter %p\n", func.id, "%closure*");
@@ -828,13 +830,14 @@ DEFUNC(compile_binary_expr, SmBinaryExpr) {
 	SPSET(sp, 0, prim, "%closure*");
 
 	COMMENT("enter right");
-	RUNDBG("enter right %p\n\n", right, NULL);
+	RUNDBG("enter right %p\n", right, "%closure*");
 	ENTER(right);
 	sm_codegen_end_closure_func (gen);
 
 	// binary closure
 	int closureid = sm_codegen_begin_closure_func (gen);
 	sp = LOADSP;
+	RUNDBG("-> binary func, sp=%p\n", sp, "i64*");
 	
 	COMMENT("visit left");
 	SmVar leftvar = VISIT(expr->left);
@@ -896,7 +899,7 @@ DEFUNC(compile_list_expr, SmListExpr) {
 	COMMENT("list closure func");
 	int sp = LOADSP;
 	int cont = SPGET(sp, 0, "%closure*");
-	RUNDBG("-> list closure, sp=%p\n", sp, NULL);
+	RUNDBG("-> list closure, sp=%p\n", sp, "i64*");
 	
 	COMMENT("allocate list of size %d", expr->elems->len);
 	int list = CALL("i8* @aligned_alloc(i32 8, i32 %d)", (int)(sizeof(void*)*LIST_ELEMS + sizeof(void*)*expr->elems->len));
@@ -918,6 +921,7 @@ DEFUNC(compile_list_expr, SmListExpr) {
 	COMMENT("tag list");
 	list = TOINT("%%list* %%%d", "%%tagged", list);
 	list = EMIT("or %%tagged %%%d, %llu", list, TAG_LST);
+
 	SPSET(sp, 0, list, NULL);
 	
 	RUNDBG("enter cont %p\n", cont, "%closure*");
@@ -989,15 +993,6 @@ SmJit* sm_compile (SmCodegenOpts opts, const char* name, SmExpr* expr) {
 	POP_BLOCK;
 
 	PUSH_NEW_BLOCK;
-	BEGIN_FUNC_ATTRS("%%tagged", "thunk_cache", "%%closure*", "readonly");
-	int thunk = sm_code_get_temp (code); // first param
-	LABEL("entry");
-	int objptr = GETPTR("%%closure* %%%d, i32 0, i32 %d", thunk, CLOSURE_CACHE);
-	int obj = LOAD("%%tagged* %%%d", objptr);
-	RET("%%tagged %%%d", obj);
-	END_FUNC;
-	POP_BLOCK;
-	PUSH_NEW_BLOCK;
 	BEGIN_FUNC("void", "main", "");
 	COMMENT("main");
 	LABEL("entry");
@@ -1031,7 +1026,7 @@ SmJit* sm_compile (SmCodegenOpts opts, const char* name, SmExpr* expr) {
 	POP_BLOCK;
 
 	char* unit = sm_code_link (code);
-	puts(unit);
+	/* puts(unit); */
 	sm_code_unref (code);
 	
 	SmJit* mod = sm_jit_compile ("<stdin>", unit);

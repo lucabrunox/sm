@@ -165,6 +165,82 @@ int sm_codegen_allocate_closure (SmCodegen* gen) {
 	return closure;
 }
 
+static int create_thunk_cache_func (SmCodegen* gen) {
+	static int thunk_cache = -1;
+	if (thunk_cache >= 0) {
+		return thunk_cache;
+	}
+
+	GET_CODE;
+	thunk_cache = sm_codegen_begin_closure_func (gen);
+	COMMENT("cached func");
+	int sp = LOADSP;
+	RUNDBG("-> cached func, sp=%p\n", sp, "i64*");
+	int cont = SPGET(sp, 0, "%closure*");
+
+	COMMENT("get cached object");
+	int ptr = GETPTR("%%closure* %%0, i32 0, i32 %d", CLOSURE_CACHE);
+	int obj = LOAD("%%tagged* %%%d", ptr);
+	SPSET(sp, 0, obj, NULL);
+	
+	RUNDBG("enter cont %p\n", cont, "%closure*");
+	ENTER(cont);
+	sm_codegen_end_closure_func (gen);
+
+	return thunk_cache;
+}
+
+static int create_update_func (SmCodegen* gen) {
+	static int update_thunk = -1;
+	if (update_thunk >= 0) {
+		return update_thunk;
+	}
+
+	GET_CODE;
+	int closureid = sm_codegen_begin_closure_func (gen);
+	COMMENT("update func");
+	int sp = LOADSP;
+	RUNDBG("-> update func, sp=%p\n", sp, "i64*");
+	int obj = SPGET(sp, 0, NULL);
+	int thunk = SPGET(sp, 1, "%closure*");
+	int cont = SPGET(sp, 2, "%closure*");
+	
+	COMMENT("change function to use the cache");
+	int funcptr = GETPTR("%%closure* %%%d, i32 0, i32 %d", thunk, CLOSURE_FUNC);
+	STORE("%%closurefunc " FUNC("closure_%d_eval"), "%%closurefunc* %%%d", create_thunk_cache_func (gen), funcptr);
+
+	COMMENT("cache result object");
+	int ptr = GETPTR("%%closure* %%%d, i32 0, i32 %d", thunk, CLOSURE_CACHE);
+	STORE("%%tagged %%%d", "%%tagged* %%%d", obj, ptr);
+
+	RUNDBG("object to cache %p\n", obj, NULL);
+	
+	FINSP(sp, 2, obj, NULL);
+	RUNDBG("enter cont %p\n", cont, "%closure*");
+	ENTER(cont);
+	sm_codegen_end_closure_func (gen);
+
+	COMMENT("alloc update closure");
+	update_thunk = CALL("i8* @aligned_alloc(i32 8, i32 %lu)", sizeof(void*)*CLOSURE_SCOPE);
+	update_thunk = BITCAST("i8* %%%d", "%%closure*", update_thunk);
+
+	COMMENT("store update function");
+	funcptr = GETPTR("%%closure* %%%d, i32 0, i32 %d", update_thunk, CLOSURE_FUNC);
+	STORE("%%closurefunc " FUNC("closure_%d_eval"), "%%closurefunc* %%%d", closureid, funcptr);
+
+	return update_thunk;
+}
+
+int sm_codegen_push_update_frame (SmCodegen* gen, int sp, int offset) {
+	GET_CODE;
+	COMMENT("push update frame");
+	SPSET(sp, offset, 0, "%closure*");
+
+	int update_thunk = create_update_func (gen);
+	SPSET(sp, offset-1, update_thunk, "%closure*");
+	return offset-2;
+}
+
 int sm_codegen_create_closure (SmCodegen* gen, int closureid, int prealloc) {
 	GET_CODE;
 	int parent_size = sm_scope_get_size (sm_scope_get_parent (gen->scope));

@@ -51,6 +51,7 @@ SmToken sm_lexer_next (SmLexer* lexer) {
 			char* old = id;
 			asprintf(&id, "%s?", id);
 			free(old);
+			READ;
 		}
 		SmToken t = { .start=start, .type="id" };
 		t.str = id;

@@ -17,6 +17,7 @@
 #define SPSET(sp,x,v,c) sm_codegen_sp_set(gen, sp, x, v, c)
 #define ENTER(x) sm_codegen_enter(gen, x)
 #define BREAKPOINT CALL_("void @llvm.debugtrap()")
+#define RUNDBG(f,x,c) sm_codegen_debug(gen, f, x, c)
 
 #define CLOSURE_FUNC 0
 #define CLOSURE_CACHE 1
@@ -50,6 +51,7 @@ int sm_codegen_begin_closure_func (SmCodegen* gen);
 void sm_codegen_end_closure_func (SmCodegen* gen);
 int sm_codegen_allocate_closure (SmCodegen* gen);
 int sm_codegen_create_closure (SmCodegen* gen, int closureid, int prealloc);
+int sm_codegen_push_update_frame (SmCodegen* gen, int sp, int offset);
 
 void sm_codegen_debug (SmCodegen* gen, const char* fmt, int var, const char* cast);
 

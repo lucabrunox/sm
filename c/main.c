@@ -15,16 +15,16 @@ int main() {
 	/* sm_lexer_init (&lexer, "asd=32; dsa=32; asd == dsa"); */
 	/* sm_lexer_init (&lexer, "asd = 'foo\\n'; dsa = x: (we='bar\\n'; asd); dsa"); */
 	/* sm_lexer_init (&lexer, "if 22 > 3 then eos else 'bar'"); */
-	sm_lexer_init (&lexer, "a=123; b=321; x,y=[a, b]; x");
+	sm_lexer_init (&lexer, "fst=s: x,y=s; x; l=[123,123]; asd=fst l; asd==asd");
 	SmParser* parser = sm_parser_new ();
 	SmExpr* expr = sm_parser_parse (parser, lexer);
+	sm_parser_free (parser);
 	if (expr) {
-		char* dump = sm_ast_dump (expr);
-		if (dump) {
-			puts (dump);
-		}
-		free (dump);
-		sm_parser_free (parser);
+		/* char* dump = sm_ast_dump (expr); */
+		/* if (dump) { */
+			/* puts (dump); */
+		/* } */
+		/* free (dump); */
 
 		SmCodegenOpts opts = { .debug=FALSE };
 		SmJit* mod = sm_compile (opts, "<stdin>", expr);

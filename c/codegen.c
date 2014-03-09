@@ -29,6 +29,7 @@ SmCodegen* sm_codegen_new (SmCodegenOpts opts) {
 	gen->closure_stack = g_queue_new ();
 	
 	gen->decls = sm_code_new_block (code);
+
 	return gen;
 }
 
@@ -190,12 +191,13 @@ static int create_thunk_cache_func (SmCodegen* gen) {
 	return thunk_cache;
 }
 
-static int create_update_func (SmCodegen* gen) {
-	static int update_thunk = -1;
-	if (update_thunk >= 0) {
-		return update_thunk;
+void sm_codegen_init_update_frame (SmCodegen* gen) {
+	static int initialized = FALSE;
+	if (initialized) {
+		return;
 	}
-
+	
+	initialized = TRUE;
 	GET_CODE;
 	int closureid = sm_codegen_begin_closure_func (gen);
 	COMMENT("update func");
@@ -221,14 +223,19 @@ static int create_update_func (SmCodegen* gen) {
 	sm_codegen_end_closure_func (gen);
 
 	COMMENT("alloc update closure");
-	update_thunk = CALL("i8* @aligned_alloc(i32 8, i32 %lu)", sizeof(void*)*CLOSURE_SCOPE);
-	update_thunk = BITCAST("i8* %%%d", "%%closure*", update_thunk);
+	int closure = CALL("i8* @aligned_alloc(i32 8, i32 %lu)", sizeof(void*)*CLOSURE_SCOPE);
+	closure = BITCAST("i8* %%%d", "%%closure*", closure);
 
 	COMMENT("store update function");
-	funcptr = GETPTR("%%closure* %%%d, i32 0, i32 %d", update_thunk, CLOSURE_FUNC);
+	funcptr = GETPTR("%%closure* %%%d, i32 0, i32 %d", closure, CLOSURE_FUNC);
 	STORE("%%closurefunc " FUNC("closure_%d_eval"), "%%closurefunc* %%%d", closureid, funcptr);
 
-	return update_thunk;
+	// set global variable to the update closure func
+	PUSH_BLOCK(sm_codegen_get_decls_block (gen));
+	EMIT_ ("@updatethunk = global %%closure* null, align 8");
+	POP_BLOCK;
+
+	STORE("%%closure* %%%d", "%%closure** @updatethunk", closure);
 }
 
 int sm_codegen_push_update_frame (SmCodegen* gen, int sp, int offset) {
@@ -236,8 +243,9 @@ int sm_codegen_push_update_frame (SmCodegen* gen, int sp, int offset) {
 	COMMENT("push update frame");
 	SPSET(sp, offset, 0, "%closure*");
 
-	int update_thunk = create_update_func (gen);
+	int update_thunk = LOAD("%%closure** @updatethunk");
 	SPSET(sp, offset-1, update_thunk, "%closure*");
+
 	return offset-2;
 }
 

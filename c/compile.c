@@ -464,6 +464,11 @@ DEFUNC(compile_member_expr, SmMemberExpr) {
 		RETVAL(id=create_eos_closure(gen), isthunk=TRUE, type=TYPE_EOS);
 	}
 
+	if (!strcmp (expr->name, "_")) {
+		printf("cannot anonymous symbol '_'\n");
+		exit(0);
+	}
+
 	int varid = sm_scope_lookup (sm_codegen_get_scope (gen), expr->name);
 	if (varid < 0) {
 		printf("not in scope %s\n", expr->name);
@@ -588,6 +593,9 @@ DEFUNC(compile_seq_expr, SmSeqExpr) {
 		SmAssignExpr* assign = (SmAssignExpr*) expr->assigns->pdata[i];
 		for (int j=0; j < assign->names->len; j++) {
 			const char* name = (const char*) assign->names->pdata[j];
+			if (!strcmp (name, "_")) {
+				continue;
+			}
 
 			int existing = sm_scope_lookup (scope, name);
 			if (existing >= 0) {
@@ -633,6 +641,11 @@ DEFUNC(compile_seq_expr, SmSeqExpr) {
 		} else {
 			SmVar var = VISIT(assign->value);
 			for (int j=0; j < names->len; j++) {
+				const char* name = (const char*) names->pdata[j];
+				if (!strcmp (name, "_")) {
+					continue;
+				}
+				
 				RUNDBG("assign match %p\n", cur_alloc, "%closure*");
 				create_match_closure (gen, cur_alloc, var.id, j);
 				cur_alloc -= temp_diff;
@@ -790,7 +803,6 @@ DEFUNC(compile_call_expr, SmCallExpr) {
 	int sp = LOADSP;
 	RUNDBG("-> call, sp=%p\n", sp, "i64*");
 
-	COMMENT("push update frame");
 	int off = sm_codegen_push_update_frame (gen, sp, -1);
 
 	COMMENT("visit func");
@@ -1009,6 +1021,7 @@ SmJit* sm_compile (SmCodegenOpts opts, const char* name, SmExpr* expr) {
 
 	int nopclo = create_nop_closure (gen);
 	int printclo = create_print_call (gen);
+	sm_codegen_init_update_frame (gen);
 	
 	SPSET(sp, 0, nopclo, "%closure*");
 

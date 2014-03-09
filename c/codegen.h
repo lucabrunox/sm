@@ -51,6 +51,8 @@ int sm_codegen_begin_closure_func (SmCodegen* gen);
 void sm_codegen_end_closure_func (SmCodegen* gen);
 int sm_codegen_allocate_closure (SmCodegen* gen);
 int sm_codegen_create_closure (SmCodegen* gen, int closureid, int prealloc);
+
+void sm_codegen_init_update_frame (SmCodegen* gen);
 int sm_codegen_push_update_frame (SmCodegen* gen, int sp, int offset);
 
 void sm_codegen_debug (SmCodegen* gen, const char* fmt, int var, const char* cast);

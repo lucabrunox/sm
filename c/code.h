@@ -18,9 +18,9 @@
 #define TAILCALL_(s,...) EMIT_("tail call fastcc " s, ##__VA_ARGS__);
 #define BR(x,...) EMIT_("br " x, ##__VA_ARGS__);
 #define CALL_(s,...) EMIT_("call " s, ##__VA_ARGS__);
-#define LOAD(s,...) EMIT("load " s, ##__VA_ARGS__);
+#define LOAD(s,...) EMIT("load " s ", align 8", ##__VA_ARGS__);
 #define GETPTR(s,...) EMIT("getelementptr " s, ##__VA_ARGS__);
-#define STORE(x,y,...) EMIT_("store " x ", " y, ##__VA_ARGS__);
+#define STORE(x,y,...) EMIT_("store " x ", " y ", align 8", ##__VA_ARGS__);
 #define BITCAST(f,t,...) EMIT("bitcast " f " to " t, ##__VA_ARGS__)
 #define TOPTR(f,t,...) EMIT("inttoptr " f " to " t, ##__VA_ARGS__)
 #define TOINT(f,t,...) EMIT("ptrtoint " f " to " t, ##__VA_ARGS__)

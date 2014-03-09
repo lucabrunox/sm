@@ -231,6 +231,15 @@ static int create_prim_print (SmCodegen* gen) {
 		POP_BLOCK;
 	}
 
+	static int chr_str = -1;
+	int chr_len = strlen("%c")+1;
+	if (chr_str < 0) {
+		PUSH_BLOCK(sm_codegen_get_decls_block (gen));
+		chr_str = sm_code_get_temp (code);
+		EMIT_ ("@.const%d = private constant [%d x i8] c\"%%c\\00\", align 8", chr_str, chr_len);
+		POP_BLOCK;
+	}
+
 	static int list_str = -1;
 	int list_len = strlen("[%llu]")+1;
 	if (list_str < 0) {
@@ -262,8 +271,8 @@ static int create_prim_print (SmCodegen* gen) {
 	RUNDBG("cont=%p\n", cont, "%closure*");
 
 	int tag = EMIT("and %%tagged %%%d, %llu", object, TAG_MASK);
-	SWITCH("i64 %%%d", "label %%unknown", "i64 %llu, label %%bint i64 %llu, label %%bstring i64 %llu, label %%bobject i64 %llu, label %%blist",
-		   tag, TAG_INT, TAG_STR, TAG_OBJ, TAG_LST);
+	SWITCH("i64 %%%d", "label %%unknown", "i64 %llu, label %%bint i64 %llu, label %%bstring i64 %llu, label %%bobject i64 %llu, label %%blist i64 %llu, label %%bchr",
+		   tag, TAG_INT, TAG_STR, TAG_OBJ, TAG_LST, TAG_CHR);
 
 	LABEL("bint");
 	int ptr = BITCAST("[%d x i8]* @.const%d", "i8*", int_len, int_str);
@@ -271,7 +280,15 @@ static int create_prim_print (SmCodegen* gen) {
 	RUNDBG("print int=%llu\n", num, NULL);
 	CALL ("i32 (i8*, ...)* @printf(i8* %%%d, i64 %%%d)", ptr, num);
 	BR ("label %%continue");
-	
+
+	LABEL("bchr");
+	ptr = BITCAST("[%d x i8]* @.const%d", "i8*", chr_len, chr_str);
+	num = EMIT("and %%tagged %%%d, %llu", object, OBJ_MASK);
+	num = EMIT("trunc %%tagged %%%d to i8", num);
+	RUNDBG("print chr=%x\n", num, NULL);
+	CALL ("i32 (i8*, ...)* @printf(i8* %%%d, i8 %%%d)", ptr, num);
+	BR ("label %%continue");
+
 	LABEL("bstring");
 	ptr = EMIT("and %%tagged %%%d, %llu", object, OBJ_MASK);
 	ptr = TOPTR("i64 %%%d", "i8*", ptr);
@@ -698,9 +715,30 @@ DEFUNC(compile_int_literal, SmLiteral) {
 	sm_codegen_end_closure_func (gen);
 	
 	// build thunk
-	COMMENT("create string thunk");
+	COMMENT("create int thunk");
 	int closure = sm_codegen_create_closure (gen, closureid, prealloc);
-	RETVAL(id=closure, isthunk=TRUE, type=TYPE_STR);
+	RETVAL(id=closure, isthunk=TRUE, type=TYPE_INT);
+}
+
+DEFUNC(compile_chr_literal, SmLiteral) {
+	GET_CODE;
+	// FIXME: do not create a thunk
+
+	int closureid = sm_codegen_begin_closure_func (gen);
+	COMMENT("chr thunk code for %x\n", expr->chr);
+	RUNDBG("-> chr literal, sp=%p\n", LOADSP, "i64*");
+	
+	int cont = SPGET(0, "%closure*");
+	STORE("i64 %llu", "i64* %%%d", TAG_CHR|expr->chr, LOADSP);
+	
+	RUNDBG("enter %p\n", cont, "%closure*");
+	ENTER(cont);
+	sm_codegen_end_closure_func (gen);
+	
+	// build thunk
+	COMMENT("create chr thunk");
+	int closure = sm_codegen_create_closure (gen, closureid, prealloc);
+	RETVAL(id=closure, isthunk=TRUE, type=TYPE_CHR);
 }
 
 DEFUNC(compile_str_literal, SmLiteral) {
@@ -922,6 +960,7 @@ SmVar (*compile_table[])(SmCodegen*, SmExpr*, int prealloc) = {
 	[SM_SEQ_EXPR] = CAST(compile_seq_expr),
 	[SM_STR_LITERAL] = CAST(compile_str_literal),
 	[SM_INT_LITERAL] = CAST(compile_int_literal),
+	[SM_CHR_LITERAL] = CAST(compile_chr_literal),
 	[SM_FUNC_EXPR] = CAST(compile_func_expr),
 	[SM_CALL_EXPR] = CAST(compile_call_expr),
 	[SM_BINARY_EXPR] = CAST(compile_binary_expr),

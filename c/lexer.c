@@ -133,12 +133,17 @@ SmToken sm_lexer_next (SmLexer* lexer) {
 			free(old);
 		}
 		READ;
-		SmToken t = { .start=start, .type="str" };
-		char* compressed = g_strcompress (str);
-		free (str);
-		t.str = g_strescape (compressed, NULL);
-		free (compressed);
-		return t;
+		if (strlen(str) == 1) {
+			SmToken t = { .start=start, .type="chr", .chr=str[0] };
+			return t;
+		} else {
+			SmToken t = { .start=start, .type="str" };
+			char* compressed = g_strcompress (str);
+			free (str);
+			t.str = g_strescape (compressed, NULL);
+			free (compressed);
+			return t;
+		}
 	}
 	
 	SmToken t = { .start=start, .type="unknown" };

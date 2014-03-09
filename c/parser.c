@@ -102,6 +102,12 @@ FUNC(primary) {
 		STR=NULL;
 		NEXT;
 		expr = EXPR(tmp);
+	} else if (CASE("chr")) {
+		NEW(tmp, SmLiteral, SM_CHR_LITERAL);
+		tmp->chr = CUR.chr;
+		STR=NULL;
+		NEXT;
+		expr = EXPR(tmp);
 	} else if (CASE("(")) {
 		SKIP("(");
 		expr = seq(parser);

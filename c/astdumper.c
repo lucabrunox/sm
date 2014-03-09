@@ -34,6 +34,8 @@ static char* dump_literal (SmLiteral* expr) {
 		asprintf(&res, "\"%s\"", expr->str);
 	} else if (expr->base.type == SM_INT_LITERAL) {
 		asprintf(&res, "%d", expr->intval);
+	} else if (expr->base.type == SM_CHR_LITERAL) {
+		asprintf(&res, "'%c'", expr->chr);
 	}
 	return res;
 }
@@ -167,6 +169,7 @@ char* (*dump_table[])(SmExpr*) = {
 	[SM_ASSIGN_EXPR] = CAST(dump_assign_expr),
 	[SM_STR_LITERAL] = CAST(dump_literal),
 	[SM_INT_LITERAL] = CAST(dump_literal),
+	[SM_CHR_LITERAL] = CAST(dump_literal),
 	[SM_FUNC_EXPR] = CAST(dump_func_expr),
 	[SM_CALL_EXPR] = CAST(dump_call_expr),
 	[SM_BINARY_EXPR] = CAST(dump_binary_expr),

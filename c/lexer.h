@@ -15,6 +15,7 @@ typedef struct {
 	union {
 		double dblval;
 		int intval;
+		char chr;
 		char *str;
 	};
 } SmToken;

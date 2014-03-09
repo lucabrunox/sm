@@ -11,6 +11,7 @@ typedef enum {
 	SM_ASSIGN_EXPR,
 	SM_STR_LITERAL,
 	SM_INT_LITERAL,
+	SM_CHR_LITERAL,
 	SM_DBL_LITERAL,
 	SM_FUNC_EXPR,
 	SM_CALL_EXPR,
@@ -66,6 +67,7 @@ typedef struct {
 	union {
 		double dblval;
 		int intval;
+		char chr;
 		char* str;
 	};
 } SmLiteral;

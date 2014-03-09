@@ -9,6 +9,7 @@
 typedef struct {
 	int use_temps;
 	int sp;
+	int hp;
 } SmClosureData;
 
 struct _SmCodegen {
@@ -19,7 +20,8 @@ struct _SmCodegen {
 	GQueue* closure_stack;
 	int cur_scopeid;
 	int next_closureid;
-	int sp;
+	int sp; // stack pointer
+	int hp; // heap pointer
 };
 
 SmCodegen* sm_codegen_new (SmCodegenOpts opts) {
@@ -43,7 +45,9 @@ SmScope* sm_codegen_get_scope (SmCodegen* gen) {
 	return gen->scope;
 }
 
-int sm_codegen_load_sp (SmCodegen* gen) {
+/* STACK POINTER management */
+
+int sm_codegen_get_stack_pointer (SmCodegen* gen) {
 	return gen->sp;
 }
 
@@ -93,11 +97,63 @@ void sm_codegen_set_stack_pointer (SmCodegen* gen, int x) {
 	gen->sp = x;
 }
 
+/* HEAP POINTER management */
+
+int sm_codegen_get_heap_pointer (SmCodegen* gen) {
+	return gen->hp;
+}
+
+int sm_codegen_hp_get (SmCodegen* gen, int x, const char* cast) {
+	GET_CODE;
+	COMMENT("hp[%d]", x);
+	int hp = GETPTR("i64* %%%d, i32 %d", gen->hp, x);
+	int val = LOAD("i64* %%%d", hp);
+	if (cast) {
+		val = TOPTR("i64 %%%d", "%s", val, cast);
+	}
+	return val;
+}
+
+void sm_codegen_hp_set (SmCodegen* gen, int x, int v, const char* cast) {
+	GET_CODE;
+	COMMENT("hp[%d] = %%%d", x, v);
+	if (cast) {
+		v = TOINT("%s %%%d", "i64", cast, v);
+	}
+	int hp = GETPTR("i64* %%%d, i32 %d", gen->hp, x)
+	STORE("i64 %%%d", "i64* %%%d", v, hp);
+}
+
+// set and update the hp
+void sm_codegen_fin_hp (SmCodegen* gen, int x, int v, const char* cast) {
+	GET_CODE;
+	COMMENT("hp[%d] = %%%d", x, v);
+	if (cast) {
+		v = TOINT("%s %%%d", "i64", cast, v);
+	}
+	gen->hp = GETPTR("i64* %%%d, i32 %d", gen->hp, x)
+	STORE("i64 %%%d", "i64* %%%d", v, gen->hp);
+}
+
+void sm_codegen_var_hp (SmCodegen* gen, int x) {
+	if (!x) {
+		return;
+	}
+	
+	GET_CODE;
+	COMMENT("hp += %d", x);
+	gen->hp = GETPTR("i64* %%%d, i32 %d", gen->hp, x);
+}
+
+void sm_codegen_set_heap_pointer (SmCodegen* gen, int x) {
+	gen->hp = x;
+}
+
 void sm_codegen_enter (SmCodegen* gen, int closure) {
 	GET_CODE;
 	int funcptr = GETPTR("%%closure* %%%d, i32 0, i32 %d", closure, CLOSURE_FUNC);
 	int func = LOAD("%%closurefunc* %%%d", funcptr);
-	TAILCALL_ ("void %%%d(%%closure* %%%d, i64* %%%d)", func, closure, gen->sp);
+	TAILCALL_ ("void %%%d(%%closure* %%%d, i64* %%%d, i64* %%%d)", func, closure, gen->sp, gen->hp);
 	RET("void");
 }
 
@@ -122,16 +178,20 @@ int sm_codegen_begin_closure_func (SmCodegen* gen) {
 	
 	int closureid = gen->next_closureid++;
 	PUSH_NEW_BLOCK;
-	BEGIN_FUNC("fastcc void", "closure_%d_eval", "%%closure*, i64*", closureid);
+	BEGIN_FUNC("fastcc void", "closure_%d_eval", "%%closure*, i64*, i64*", closureid);
 	
 	(void) sm_code_get_temp (code); // first param, self closure
-	(void) sm_code_get_temp (code); // second param, stack pointer
+	int sp = sm_code_get_temp (code); // second param, stack pointer
+	int hp = sm_code_get_temp (code); // third param, heap pointer
 	LABEL("entry");
 	
 	SmClosureData* data = g_new0 (SmClosureData, 1);
 	// save sp
 	data->sp = gen->sp;
-	gen->sp = 1;
+	gen->sp = sp;
+	// save hp
+	data->hp = gen->hp;
+	gen->hp = hp;
 	g_queue_push_tail (gen->closure_stack, data);
 	/* if (!nparams) { */
 	/* // next call will point to the cache */
@@ -155,14 +215,16 @@ void sm_codegen_end_closure_func (SmCodegen* gen) {
 	
 	SmClosureData* data = g_queue_pop_tail (gen->closure_stack);
 	gen->sp = data->sp;
+	gen->hp = data->hp;
 }
 
 
 int sm_codegen_create_custom_closure (SmCodegen* gen, int scope_size, int closureid) {
 	GET_CODE;
-	
-	int closure = CALL("i8* @aligned_alloc(i32 8, i32 %lu)", sizeof(void*)*CLOSURE_SCOPE+sizeof(void*)*scope_size);
-	closure = BITCAST("i8* %%%d", "%%closure*", closure);
+
+	VARHP(-(int)(sizeof(void*)*CLOSURE_SCOPE+sizeof(void*)*scope_size));
+	int closure = LOADHP;
+	closure = BITCAST("i64* %%%d", "%%closure*", closure);
 
 	COMMENT("store update function");
 	int funcptr = GETPTR("%%closure* %%%d, i32 0, i32 %d", closure, CLOSURE_FUNC);
@@ -177,9 +239,9 @@ int sm_codegen_allocate_closure (SmCodegen* gen) {
 	int parent_size = sm_scope_get_size (sm_scope_get_parent (gen->scope));
 	int local_size = sm_scope_get_local_size (gen->scope);
 	COMMENT("alloc closure with %d vars", parent_size+local_size);
-	int closure = CALL("i8* @aligned_alloc(i32 8, i32 %lu)",
-					 sizeof(void*)*CLOSURE_SCOPE+sizeof(void*)*(parent_size+local_size));
-	closure = BITCAST("i8* %%%d", "%%closure*", closure);
+	VARHP(-(int)(sizeof(void*)*CLOSURE_SCOPE+sizeof(void*)*(parent_size+local_size)));
+	int closure = LOADHP;
+	closure = BITCAST("i64* %%%d", "%%closure*", closure);
 	return closure;
 }
 

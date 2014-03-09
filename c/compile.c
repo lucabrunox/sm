@@ -884,8 +884,9 @@ DEFUNC(compile_list_expr, SmListExpr) {
 	int cont = SPGET(0, "%closure*");
 	
 	COMMENT("allocate list of size %d", expr->elems->len);
-	int list = CALL("i8* @aligned_alloc(i32 8, i32 %d)", (int)(sizeof(void*)*LIST_ELEMS + sizeof(void*)*expr->elems->len));
-	list = BITCAST("i8* %%%d", "%%list*", list);
+	VARHP(-(int)(sizeof(void*)*LIST_ELEMS + sizeof(void*)*expr->elems->len));
+	int list = LOADHP;
+	list = BITCAST("i64* %%%d", "%%list*", list);
 
 	COMMENT("assign size to list");
 	int size = GETPTR("%%list* %%%d, i32 0, i32 0", list);
@@ -965,8 +966,9 @@ SmJit* sm_compile (SmCodegenOpts opts, const char* name, SmExpr* expr) {
 	DECLARE ("void @llvm.donothing() nounwind readnone");
 	DECLARE ("void @llvm.debugtrap() nounwind");
 	EMIT_ ("%%tagged = type i64");
-	EMIT_ ("%%closurefunc = type void (%%closure*, i64*)*");
+	EMIT_ ("%%closurefunc = type void (%%closure*, i64*, i64*)*");
 	EMIT_ ("@stack = global i64* null, align 8");
+	EMIT_ ("@heap = global i64* null, align 8");
 	DEFINE_STRUCT ("closure", "%%closurefunc, %%tagged, [0 x %%closure*]"); // func, cached object, scope
 	DEFINE_STRUCT ("list", "i64, [0 x %%closure*]"); // size, thunks
 	POP_BLOCK;
@@ -981,11 +983,20 @@ SmJit* sm_compile (SmCodegenOpts opts, const char* name, SmExpr* expr) {
 	stack = BITCAST("i8* %%%d", "i64*", stack);
 	STORE("i64* %%%d", "i64** @stack", stack);
 	
-	/* STORE("i64* %%%d", "i64** @sp", stack); */
 	sm_codegen_set_stack_pointer (gen, stack);
 	VARSP(4096-8);
 	RUNDBG("top stack=%p\n", stack, "i64*");
 	RUNDBG("bottom sp=%p\n", LOADSP, "i64*");
+
+	COMMENT("alloc heap");
+	int heap = CALL("i8* @aligned_alloc(i32 8, i32 %d)", (int)(4096*sizeof(void*)));
+	heap = BITCAST("i8* %%%d", "i64*", heap);
+	STORE("i64* %%%d", "i64** @heap", heap);
+	
+	sm_codegen_set_heap_pointer (gen, heap);
+	VARHP(4096-8);
+	RUNDBG("top heap=%p\n", heap, "i64*");
+	RUNDBG("bottom hp=%p\n", LOADHP, "i64*");	
 
 	int nopclo = create_nop_closure (gen);
 	int printclo = create_print_call (gen);

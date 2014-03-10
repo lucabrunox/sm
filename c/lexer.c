@@ -111,7 +111,7 @@ SmToken sm_lexer_next (SmLexer* lexer) {
 			SmToken t = { .start=start, .type=">=" };
 			return t;
 		} else {
-			SmToken t = { .start=start, .type="unknown" };
+			SmToken t = { .start=start, .type=">" };
 			return t;
 		}
 	}

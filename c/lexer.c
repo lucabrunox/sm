@@ -100,6 +100,22 @@ SmToken sm_lexer_next (SmLexer* lexer) {
 	LEX1(":");
 	LEX1("|");
 
+	if (c == '>') {
+		READ;
+		if (PEEK == '>') {
+			READ;
+			SmToken t = { .start=start, .type=">>" };
+			return t;
+		} else if (PEEK == '=') {
+			READ;
+			SmToken t = { .start=start, .type=">=" };
+			return t;
+		} else {
+			SmToken t = { .start=start, .type="unknown" };
+			return t;
+		}
+	}
+	
 	LEX2("=", "=");
 	LEX2("<", "=");
 	LEX2(">", "=");

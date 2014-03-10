@@ -158,7 +158,7 @@ FUNC(binary) {
 	CHECK(left);
 	
 	if (CASE("<") || CASE("<=") || CASE(">") || CASE(">=") || CASE("==") || CASE("!=") || CASE("and") || CASE("or") ||
-		CASE("+") || CASE("-") || CASE("*") || CASE("/") || CASE("**") || CASE("//")) {
+		CASE("+") || CASE("-") || CASE("*") || CASE("/") || CASE("**") || CASE("//") || CASE(">>")) {
 		NEW(bin, SmBinaryExpr, SM_BINARY_EXPR);
 		bin->op = TYPE;
 		NEXT;

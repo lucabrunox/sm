@@ -186,27 +186,37 @@ static int create_prim_binary (SmCodegen* gen, const char* op) {
 	int cont = SPGET(2, "%closure*");
 
 	#define CASE(x) (!strcmp(op, x))
-	const char* cmp;
-	if (CASE("<")) cmp = "slt";
-	else if (CASE(">")) cmp = "sgt";
-	else if (CASE("<=")) cmp = "sle";
-	else if (CASE(">=")) cmp = "sge";
-	else if (CASE("==")) cmp = "eq";
-	else if (CASE("!=")) cmp = "ne";
-	else assert(FALSE);
-
-	SmVar leftvar = { .id=left, .isthunk=FALSE, .type=TYPE_UNK };
-	SmVar rightvar = { .id=right, .isthunk=FALSE, .type=TYPE_UNK };
-	left = try_var (gen, leftvar, TYPE_INT);
-	right = try_var (gen, rightvar, TYPE_INT);
+	if (CASE(">>")) {
+		// nop, just return the right value
+		FINSP(2, right, NULL);
+	} else {
+		const char* cmp;
+		if (CASE("<")) cmp = "slt";
+		else if (CASE(">")) cmp = "sgt";
+		else if (CASE("<=")) cmp = "sle";
+		else if (CASE(">=")) cmp = "sge";
+		else if (CASE("==")) cmp = "eq";
+		else if (CASE("!=")) cmp = "ne";
+		else assert(FALSE);
+		
+		SmVar leftvar = { .id=left, .isthunk=FALSE, .type=TYPE_UNK };
+		SmVar rightvar = { .id=right, .isthunk=FALSE, .type=TYPE_UNK };
+		if (CASE("==") || CASE("!=")) {
+			left = EMIT("and i64 %%%d, %llu", left, OBJ_MASK);
+			right = EMIT("and i64 %%%d, %llu", right, OBJ_MASK);
+		} else {
+			left = try_var (gen, leftvar, TYPE_INT);
+			right = try_var (gen, rightvar, TYPE_INT);
+		}
+		
+		int result = EMIT("icmp %s i64 %%%d, %%%d", cmp, left, right);
+		result = EMIT("zext i1 %%%d to i64", result);
+		result = EMIT("or i64 %%%d, %llu", result, TAG_OBJ);
+		
+		COMMENT("set result");
+		FINSP(2, result, NULL);
+	}
 	
-	int result = EMIT("icmp %s i64 %%%d, %%%d", cmp, left, right);
-	result = EMIT("zext i1 %%%d to i64", result);
-	result = EMIT("or i64 %%%d, %llu", result, TAG_OBJ);
-	
-	COMMENT("set result");
-	FINSP(2, result, NULL);
-
 	RUNDBG("enter cont %p\n", cont, "%closure*");
 	ENTER(cont);
 	sm_codegen_end_closure_func (gen);
@@ -250,7 +260,7 @@ static int create_prim_cond (SmCodegen* gen) {
 	sm_codegen_end_closure_func (gen);
 
 	COMMENT("create cond prim");
-	closure = sm_codegen_create_closure (gen, closureid, -1);
+	closure = sm_codegen_create_custom_closure (gen, 0, closureid);
 	return closure;
 }
 
@@ -658,8 +668,8 @@ DEFUNC(compile_call_expr, SmCallExpr) {
 DEFUNC(compile_binary_expr, SmBinaryExpr) {
 	GET_CODE;
 
-	// eval left closure
-	int evaleft = sm_codegen_begin_closure_func (gen);
+	// eval right closure
+	int evalright = sm_codegen_begin_closure_func (gen);
 	COMMENT("eval right op %s thunk func", expr->op);
 	RUNDBG("-> right op thunk, sp=%p\n", LOADSP, "i64*");
 	int left = SPGET(0, NULL);
@@ -685,8 +695,8 @@ DEFUNC(compile_binary_expr, SmBinaryExpr) {
 	SmVar leftvar = VISIT(expr->left);
 	COMMENT("visit right");
 	SmVar rightvar = VISIT(expr->right);
-	COMMENT("create eval left thunk");
-	int evalclo = sm_codegen_create_closure (gen, evaleft, -1);
+	COMMENT("create eval right thunk");
+	int evalclo = sm_codegen_create_closure (gen, evalright, -1);
 
 	SPSET(-1, rightvar.id, "%closure*");
 	FINSP(-2, evalclo, "%closure*");

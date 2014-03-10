@@ -857,7 +857,7 @@ SmJit* sm_compile (SmCodegenOpts opts, const char* name, SmExpr* expr) {
 
 	int nopclo = create_nop_closure (gen);
 	sm_codegen_init_update_frame (gen);
-	sm_prim_print (gen);
+	sm_prim_init_print (gen);
 
 	COMMENT("push nop");
 	SPSET(0, nopclo, "%closure*");

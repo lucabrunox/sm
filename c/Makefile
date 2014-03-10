@@ -6,7 +6,7 @@ OBJS=$(subst .c,.o,$(CSRCS)) llvm.o
 # CFLAGS=-O2 -g -flto 
 # LDFLAGS=-flto
 CFLAGS=-O0 -g -Wall -Werror
-LDFLAGS=
+LDFLAGS=-rdynamic
 
 sm: $(OBJS) Makefile
 	g++ $(LDFLAGS) -std=c++11 -o sm $(OBJS) -ldl `llvm-config --libs` `llvm-config --ldflags` `pkg-config glib-2.0 --libs`

@@ -3,7 +3,6 @@
 
 #include "codegen.h"
 
-void sm_prim_strict (SmCodegen* gen);
-void sm_prim_print (SmCodegen* gen);
+void sm_prim_init_print (SmCodegen* gen);
 
 #endif

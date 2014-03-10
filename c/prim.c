@@ -6,7 +6,7 @@
 #include "prim.h"
 #include "codegen.h"
 
-void sm_prim_print (uint64_t object) {
+uint64_t sm_prim_print (uint64_t object) {
 	uint64_t tag = object & TAG_MASK;
 	switch (tag) {
 		case TAG_INT:
@@ -21,9 +21,11 @@ void sm_prim_print (uint64_t object) {
 		default:
 			printf("(cannot print object with tag: %lx)", tag);
 	}
+	
+	return object;
 }
 
-void sm_prim_init_print (SmCodegen* gen) {
+void sm_prim_init (SmCodegen* gen, const char* prim_name, const char* prim_func) {
 	static int closure = -1;
 	if (closure >= 0) {
 		return;
@@ -32,28 +34,27 @@ void sm_prim_init_print (SmCodegen* gen) {
 	GET_CODE;
 	
 	int closureid = sm_codegen_begin_closure_func (gen);
-	COMMENT("real print func");
-	COMMENT("get string");
+	COMMENT("%s func", prim_name);
 	int object = SPGET(0, NULL);
-	RUNDBG("-> prim print, object=%p\n", object, NULL);
-	RUNDBG("sp=%p\n", LOADSP, "i64*");
+	RUNDBG("-> prim, sp=%p\n", LOADSP, "i64*");
+	RUNDBG("arg=%p\n", object, NULL);
 
 	COMMENT("get cont");
 	int cont = SPGET(1, "%closure*");
 
-	CALL_("void @sm_prim_print(i64 %%%d)", object);
+	object = CALL("i64 @%s(i64 %%%d)", prim_func, object);
 	
-	COMMENT("put object back in the stack");
+	COMMENT("put result back in the stack");
 	FINSP(1, object, NULL);
 	RUNDBG("enter %p\n", cont, "%closure*");
 	ENTER(cont);
 	sm_codegen_end_closure_func (gen);
 
 	PUSH_BLOCK(sm_codegen_get_decls_block (gen));
-	EMIT_ ("@primPrint = global %%closure* null, align 8");
-	DECLARE ("void @sm_prim_print(i64)");
+	EMIT_ ("@%s = global %%closure* null, align 8", prim_name);
+	DECLARE ("i64 @%s(i64)", prim_func);
 	POP_BLOCK;
 
 	closure = sm_codegen_create_custom_closure (gen, 0, closureid);
-	STORE("%%closure* %%%d", "%%closure** @primPrint", closure);
+	STORE("%%closure* %%%d", "%%closure** @%s", closure, prim_name);
 }

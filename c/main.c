@@ -8,27 +8,19 @@
 #include "parser.h"
 #include "compile.h"
 
-char* read_all (FILE* f) {
-	size_t len = 0;
-	size_t size = 4096;
-	char* buf = (char*) malloc (size);
-	size_t r;
-	while ((r = fread (buf+len, 1, size-len-1, f))) {
-		len += r;
-		if (len >= size-1) {
-			size *= 2;
-			buf = (char*) realloc (buf, size);
-		}
+int main(int argc, char** argv) {
+	if (argc < 2) {
+		fprintf(stderr, "Usage: %s script.sm\n", argv[0]);
+		return 1;
 	}
 
-	buf[len] = '\0';
-	return buf;
-}
-
-int main() {
+	char* code;
+	GError* err = NULL;
+	if (!g_file_get_contents (argv[1], &code, NULL, &err)) {
+		g_error (err->message);
+	}
 	
 	SmLexer lexer;
-	char* code = read_all (stdin);
 	sm_lexer_init (&lexer, code);
 	SmParser* parser = sm_parser_new ();
 	SmExpr* expr = sm_parser_parse (parser, lexer);

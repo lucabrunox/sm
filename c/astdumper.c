@@ -88,7 +88,7 @@ static char* dump_func_expr (SmFuncExpr* expr) {
 	return res;
 }
 
-static char* dump_seq_expr (SmSeqExpr* expr) {
+static char* dump_let_expr (SmLetExpr* expr) {
 	char* res = NULL;
 	char* old;
 	char* inner;
@@ -165,7 +165,7 @@ static char* dump_list_expr (SmListExpr* expr) {
 #define CAST(x) (char* (*)(SmExpr*))(x)
 char* (*dump_table[])(SmExpr*) = {
 	[SM_MEMBER_EXPR] = CAST(dump_member_expr),
-	[SM_SEQ_EXPR] = CAST(dump_seq_expr),
+	[SM_LET_EXPR] = CAST(dump_let_expr),
 	[SM_ASSIGN_EXPR] = CAST(dump_assign_expr),
 	[SM_STR_LITERAL] = CAST(dump_literal),
 	[SM_INT_LITERAL] = CAST(dump_literal),

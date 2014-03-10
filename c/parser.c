@@ -49,8 +49,8 @@ static char* identifier (SmParser* parser) {
 	return val;
 }
 
-FUNC(seq);
-FUNC2(function, int allow_seq);
+FUNC(let);
+FUNC2(function, int allow_let);
 
 FUNC2(member, SmExpr* inner) {
 	char* id = identifier(parser);
@@ -110,7 +110,7 @@ FUNC(primary) {
 		expr = EXPR(tmp);
 	} else if (CASE("(")) {
 		SKIP("(");
-		expr = seq(parser);
+		expr = let(parser);
 		SKIP(")");
 	} else if (CASE("[")) {
 		expr = list(parser);
@@ -205,7 +205,7 @@ FUNC(cond) {
 }
 		
 
-FUNC2(function, int allow_seq) {
+FUNC2(function, int allow_let) {
 	SmParser begin = SAVE;
 	if (CASE("id")) {
 		GPtrArray* params = g_ptr_array_new_with_free_func ((GDestroyNotify) g_free);
@@ -213,19 +213,19 @@ FUNC2(function, int allow_seq) {
 			g_ptr_array_add (params, identifier(parser));
 			if (ACCEPT(":")) {
 				SmExpr* body;
-				if (allow_seq) {
-					body = seq(parser);
+				if (allow_let) {
+					body = let(parser);
 				} else {
 					body = cond(parser);
 				}
 				CHECK(body);
-				if (body->type != SM_SEQ_EXPR) {
-					// create a seq expr because it's easier at compile time
-					NEW(seq, SmSeqExpr, SM_SEQ_EXPR);
-					seq->assigns = g_ptr_array_new ();
-					seq->result = body;
-					body->parent = EXPR(seq);
-					body = EXPR(seq);
+				if (body->type != SM_LET_EXPR) {
+					// create a let expr because it's easier at compile time
+					NEW(let, SmLetExpr, SM_LET_EXPR);
+					let->assigns = g_ptr_array_new ();
+					let->result = body;
+					body->parent = EXPR(let);
+					body = EXPR(let);
 				}
 				
 				NEW(expr, SmFuncExpr, SM_FUNC_EXPR);
@@ -279,28 +279,28 @@ FUNC(assign) {
 	return cond(parser);
 }
 
-FUNC(seq) {
+FUNC(let) {
 	SmExpr* expr = assign(parser);
 	CHECK(expr);
 	if (expr->type != SM_ASSIGN_EXPR) {
 		return expr;
 	}
 
-	NEW(seq, SmSeqExpr, SM_SEQ_EXPR);
-	seq->assigns = g_ptr_array_new ();
+	NEW(let, SmLetExpr, SM_LET_EXPR);
+	let->assigns = g_ptr_array_new ();
 	while (ACCEPT(";")) {
-		g_ptr_array_add (seq->assigns, expr);
+		g_ptr_array_add (let->assigns, expr);
 
 		expr = assign(parser);
 		CHECK(expr);
-		expr->parent = EXPR(seq);
+		expr->parent = EXPR(let);
 		if (expr->type != SM_ASSIGN_EXPR) {
-			seq->result = expr;
+			let->result = expr;
 			break;
 		}
 	}
 	
-	return EXPR(seq);
+	return EXPR(let);
 }
 
 SmExpr* sm_parser_parse (SmParser* parser, SmLexer lexer) {
@@ -308,7 +308,7 @@ SmExpr* sm_parser_parse (SmParser* parser, SmLexer lexer) {
 	parser->lexer = lexer;
 	
 	NEXT;
-	SmExpr* expr = seq(parser);
+	SmExpr* expr = let(parser);
 	CHECK(expr);
 	EXPECT("eof");
 	return expr;

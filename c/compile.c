@@ -364,7 +364,7 @@ static void create_match_closure (SmCodegen* gen, int prealloc, int thunk, int p
 	STORE("%%closure* %%%d", "%%closure** %%%d", thunk, ptr);
 }
 
-DEFUNC(compile_seq_expr, SmSeqExpr) {
+DEFUNC(compile_let_expr, SmLetExpr) {
 	GET_CODE;
 
 	SmFuncExpr* func = (expr->base.parent && expr->base.parent->type == SM_FUNC_EXPR) ? (SmFuncExpr*) expr->base.parent : NULL;
@@ -376,8 +376,8 @@ DEFUNC(compile_seq_expr, SmSeqExpr) {
 	
 	int closureid = sm_codegen_begin_closure_func (gen);
 	sm_codegen_set_use_temps (gen, TRUE);
-	COMMENT("seq/func closure");
-	RUNDBG("-> seq, sp=%p\n", LOADSP, "i64*");
+	COMMENT("let/func closure");
+	RUNDBG("-> let, sp=%p\n", LOADSP, "i64*");
 	
 	int nlocals = 0;
 	/* assign ids to locals and preallocate thunks */
@@ -448,7 +448,7 @@ DEFUNC(compile_seq_expr, SmSeqExpr) {
 		}
 	}
 
-	COMMENT("visit seq result");
+	COMMENT("visit let result");
 	SmVar result = VISIT(expr->result);
 	COMMENT("pop parameters and locals");
 	VARSP(nparams+nlocals);
@@ -460,7 +460,7 @@ DEFUNC(compile_seq_expr, SmSeqExpr) {
 	sm_codegen_set_scope (gen, sm_scope_get_parent (scope));
 	sm_scope_free (scope);
 
-	COMMENT("create seq closure");
+	COMMENT("create let closure");
 	COMMENT("ast: %s", g_strescape (sm_ast_dump(EXPR(expr)), NULL));
 	int closure = sm_codegen_create_closure (gen, closureid, prealloc);
 
@@ -777,7 +777,7 @@ DEFUNC(compile_list_expr, SmListExpr) {
 #define CAST(x) (SmVar (*)(SmCodegen*, SmExpr*, int prealloc))(x)
 SmVar (*compile_table[])(SmCodegen*, SmExpr*, int prealloc) = {
 	[SM_MEMBER_EXPR] = CAST(compile_member_expr),
-	[SM_SEQ_EXPR] = CAST(compile_seq_expr),
+	[SM_LET_EXPR] = CAST(compile_let_expr),
 	[SM_STR_LITERAL] = CAST(compile_str_literal),
 	[SM_INT_LITERAL] = CAST(compile_int_literal),
 	[SM_CHR_LITERAL] = CAST(compile_chr_literal),

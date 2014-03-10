@@ -8,18 +8,33 @@
 #include "parser.h"
 #include "compile.h"
 
-int main() {		
+char* read_all (FILE* f) {
+	size_t len = 0;
+	size_t size = 4096;
+	char* buf = (char*) malloc (size);
+	size_t r;
+	while ((r = fread (buf+len, 1, size-len-1, f))) {
+		len += r;
+		if (len >= size-1) {
+			size *= 2;
+			buf = (char*) realloc (buf, size);
+		}
+	}
+
+	buf[len] = '\0';
+	return buf;
+}
+
+int main() {
+	
 	SmLexer lexer;
-	/* sm_lexer_init (&lexer, "id=x:x; id 'asd'"); */
-	/* sm_lexer_init (&lexer, "dsa='foo'; asd=(id = x: x; id); asd dsa"); */
-	/* sm_lexer_init (&lexer, "asd=32; dsa=32; asd == dsa"); */
-	/* sm_lexer_init (&lexer, "asd = 'foo\n'; dsa = x: (we='bar\n'; asd); dsa"); */
-	/* sm_lexer_init (&lexer, "if 22 > 3 then eos else 'bar'"); */
-	sm_lexer_init (&lexer, "fst=s: x,_=s; x; snd=s: _,x=s; x; l=[123,123]; asd=fst l; print = x: primPrint x; print asd");
-	/* sm_lexer_init (&lexer, "x='asd'; primPrint x"); */
+	char* code = read_all (stdin);
+	sm_lexer_init (&lexer, code);
 	SmParser* parser = sm_parser_new ();
 	SmExpr* expr = sm_parser_parse (parser, lexer);
 	sm_parser_free (parser);
+	free (code);
+	
 	if (expr) {
 		/* char* dump = sm_ast_dump (expr); */
 		/* if (dump) { */

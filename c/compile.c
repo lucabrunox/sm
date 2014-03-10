@@ -619,7 +619,9 @@ DEFUNC(compile_call_expr, SmCallExpr) {
 	const char* prim_name = NULL;
 	if (expr->func->type == SM_MEMBER_EXPR) {
 		SmMemberExpr* member = (SmMemberExpr*) expr->func;
-		if (strstr (member->name, "prim") == member->name) {
+		if (!strcmp (member->name, "print")) {
+			prim_name = "primPrint";
+		} else if (strstr (member->name, "prim") == member->name) {
 			prim_name = member->name;
 		}
 	}

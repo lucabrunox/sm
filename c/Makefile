@@ -1,7 +1,7 @@
 all: sm hello.s
 
-CSRCS=main.c codegen.c compile.c objectpool.c code.c parser.c astdumper.c lexer.c scope.c
-HEADS=codegen.h objectpool.h code.h parser.h ast.h lexer.h llvm.h scope.h compile.h
+CSRCS=main.c prim.c codegen.c compile.c objectpool.c code.c parser.c astdumper.c lexer.c scope.c
+HEADS=codegen.h prim.h objectpool.h code.h parser.h ast.h lexer.h llvm.h scope.h compile.h
 OBJS=$(subst .c,.o,$(CSRCS)) llvm.o
 # CFLAGS=-O2 -g -flto 
 # LDFLAGS=-flto

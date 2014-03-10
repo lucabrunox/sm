@@ -11,29 +11,11 @@
 #include "llvm.h"
 #include "code.h"
 #include "scope.h"
+#include "prim.h"
 
 #define DEFUNC(n,x) static SmVar n (SmCodegen* gen, x* expr, int prealloc)
 #define RETVAL(x,y,z) SmVar _res_var={.x, .y, .z}; return _res_var
 #define VISIT(x) call_compile_table (gen, EXPR(x), -1)
-
-/* Currently favoring doubles, will change in the future to favor either lists or functions */
-#define DBL_qNAN 0x7FF8000000000000ULL
-#define TAG_MASK 0x7FFF000000000000ULL
-#define OBJ_MASK 0x0000FFFFFFFFFFFFULL
-#define TAG_FUN DBL_qNAN|(1ULL << 48)
-#define TAG_LST DBL_qNAN|(2ULL << 48)
-#define TAG_INT DBL_qNAN|(3ULL << 48)
-#define TAG_CHR DBL_qNAN|(4ULL << 48)
-#define TAG_STR DBL_qNAN|(5ULL << 48) // constant string
-#define TAG_EXC DBL_qNAN|(6ULL << 48) // exception, carries an object
-#define TAG_OBJ DBL_qNAN|(7ULL << 48)
-
-#define OBJ_FALSE (TAG_OBJ)
-#define OBJ_TRUE (TAG_OBJ|(1ULL))
-#define OBJ_EOS (TAG_OBJ|(2ULL))
-
-#define LIST_SIZE 0
-#define LIST_ELEMS 1
 
 typedef enum {
 	TYPE_FUN,
@@ -185,189 +167,6 @@ static int create_eos_closure (SmCodegen* gen) {
 	
 	eosclo = sm_codegen_create_closure (gen, closureid, -1);
 	return eosclo;
-}
-
-static int create_prim_print (SmCodegen* gen) {
-	static int directclo = -1;
-	if (directclo >= 0) {
-		return directclo;
-	}
-	
-	GET_CODE;
-	
-	static int true_str = -1;
-	int true_len = strlen("true")+1;
-	if (true_str < 0) {
-		PUSH_BLOCK(sm_codegen_get_decls_block (gen));
-		true_str = sm_code_get_temp (code);
-		EMIT_ ("@.const%d = private constant [%d x i8] c\"true\\00\", align 8", true_str, true_len);
-		POP_BLOCK;
-	}
-	
-	static int false_str = -1;
-	int false_len = strlen("false")+1;
-	if (false_str < 0) {
-		PUSH_BLOCK(sm_codegen_get_decls_block (gen));
-		false_str = sm_code_get_temp (code);
-		EMIT_ ("@.const%d = private constant [%d x i8] c\"false\\00\", align 8", false_str, false_len);
-		POP_BLOCK;
-	}
-
-	static int eos_str = -1;
-	int eos_len = strlen("eos")+1;
-	if (eos_str < 0) {
-		PUSH_BLOCK(sm_codegen_get_decls_block (gen));
-		eos_str = sm_code_get_temp (code);
-		EMIT_ ("@.const%d = private constant [%d x i8] c\"eos\\00\", align 8", eos_str, eos_len);
-		POP_BLOCK;
-	}
-
-	static int int_str = -1;
-	int int_len = strlen("%llu")+1;
-	if (int_str < 0) {
-		PUSH_BLOCK(sm_codegen_get_decls_block (gen));
-		int_str = sm_code_get_temp (code);
-		EMIT_ ("@.const%d = private constant [%d x i8] c\"%%llu\\00\", align 8", int_str, int_len);
-		POP_BLOCK;
-	}
-
-	static int chr_str = -1;
-	int chr_len = strlen("%c")+1;
-	if (chr_str < 0) {
-		PUSH_BLOCK(sm_codegen_get_decls_block (gen));
-		chr_str = sm_code_get_temp (code);
-		EMIT_ ("@.const%d = private constant [%d x i8] c\"%%c\\00\", align 8", chr_str, chr_len);
-		POP_BLOCK;
-	}
-
-	static int list_str = -1;
-	int list_len = strlen("[%llu]")+1;
-	if (list_str < 0) {
-		PUSH_BLOCK(sm_codegen_get_decls_block (gen));
-		list_str = sm_code_get_temp (code);
-		EMIT_ ("@.const%d = private constant [%d x i8] c\"[%%llu]\\00\", align 8", list_str, list_len);
-		POP_BLOCK;
-	}
-
-	static int unk_str = -1;
-	const char* unk_fmt = "unknown object type: %llu\n";
-	int unk_len = strlen(unk_fmt)+1;
-	if (unk_str < 0) {
-		PUSH_BLOCK(sm_codegen_get_decls_block (gen));
-		unk_str = sm_code_get_temp (code);
-		EMIT_ ("@.const%d = private constant [%d x i8] c\"%s\\00\", align 8", unk_str, unk_len, unk_fmt);
-		POP_BLOCK;
-	}
-	
-	int directid = sm_codegen_begin_closure_func (gen);
-	COMMENT("real print func");
-	COMMENT("get string");
-	int object = SPGET(0, NULL);
-	RUNDBG("-> real print, object=%p\n", object, NULL);
-	RUNDBG("sp=%p\n", LOADSP, "i64*");
-
-	COMMENT("get continuation");
-	int cont = SPGET(1, "%closure*");
-	RUNDBG("cont=%p\n", cont, "%closure*");
-
-	int tag = EMIT("and %%tagged %%%d, %llu", object, TAG_MASK);
-	SWITCH("i64 %%%d", "label %%unknown", "i64 %llu, label %%bint i64 %llu, label %%bstring i64 %llu, label %%bobject i64 %llu, label %%blist i64 %llu, label %%bchr",
-		   tag, TAG_INT, TAG_STR, TAG_OBJ, TAG_LST, TAG_CHR);
-
-	LABEL("bint");
-	int ptr = BITCAST("[%d x i8]* @.const%d", "i8*", int_len, int_str);
-	int num = EMIT("and %%tagged %%%d, %llu", object, OBJ_MASK);
-	RUNDBG("print int=%llu\n", num, NULL);
-	CALL ("i32 (i8*, ...)* @printf(i8* %%%d, i64 %%%d)", ptr, num);
-	BR ("label %%continue");
-
-	LABEL("bchr");
-	ptr = BITCAST("[%d x i8]* @.const%d", "i8*", chr_len, chr_str);
-	num = EMIT("and %%tagged %%%d, %llu", object, OBJ_MASK);
-	num = EMIT("trunc %%tagged %%%d to i8", num);
-	RUNDBG("print chr=%x\n", num, NULL);
-	CALL ("i32 (i8*, ...)* @printf(i8* %%%d, i8 %%%d)", ptr, num);
-	BR ("label %%continue");
-
-	LABEL("bstring");
-	ptr = EMIT("and %%tagged %%%d, %llu", object, OBJ_MASK);
-	ptr = TOPTR("i64 %%%d", "i8*", ptr);
-	RUNDBG("print string=%p\n", ptr, "i8*");
-	CALL ("i32 (i8*, ...)* @printf(i8* %%%d)", ptr);
-	BR ("label %%continue");
-
-	LABEL("bobject");
-	SWITCH("i64 %%%d", "label %%unknown", "i64 %llu, label %%btrue i64 %llu, label %%bfalse i64 %llu, label %%beos",
-		   object, OBJ_TRUE, OBJ_FALSE, OBJ_EOS);
-
-	LABEL("btrue");
-	ptr = BITCAST("[%d x i8]* @.const%d", "i8*", true_len, true_str);
-	CALL ("i32 (i8*, ...)* @printf(i8* %%%d)", ptr);
-	BR ("label %%continue");
-
-	LABEL("bfalse");
-	ptr = BITCAST("[%d x i8]* @.const%d", "i8*", false_len, false_str);
-	CALL ("i32 (i8*, ...)* @printf(i8* %%%d)", ptr);
-	BR ("label %%continue");
-
-	LABEL("beos");
-	ptr = BITCAST("[%d x i8]* @.const%d", "i8*", eos_len, eos_str);
-	CALL ("i32 (i8*, ...)* @printf(i8* %%%d)", ptr);
-	BR ("label %%continue");
-
-	LABEL("blist");
-	ptr = BITCAST("[%d x i8]* @.const%d", "i8*", list_len, list_str);
-	int list = EMIT("and %%tagged %%%d, %llu", object, OBJ_MASK);
-	list = TOPTR("i64 %%%d", "%%list*", list);
-	int listsize = GETPTR("%%list* %%%d, i32 0, i32 0", list);
-	listsize = LOAD("i64* %%%d", listsize);
-	CALL ("i32 (i8*, ...)* @printf(i8* %%%d, i64 %%%d)", ptr, listsize);
-	BR ("label %%continue");
-
-	LABEL("unknown");
-	ptr = BITCAST("[%d x i8]* @.const%d", "i8*", unk_len, unk_str);
-	CALL ("i32 (i8*, ...)* @printf(i8* %%%d, i64 %%%d)", ptr, tag);
-	RET("void");
-
-	LABEL("continue");
-	COMMENT("put object back in the stack");
-	FINSP(1, object, NULL);
-	RUNDBG("enter %p\n", cont, "%closure*");
-	ENTER(cont);
-	sm_codegen_end_closure_func (gen);
-
-	directclo = sm_codegen_create_custom_closure (gen, 0, directid);
-	return directclo;
-}
-
-static int create_print_call (SmCodegen* gen) {
-	static int printclo = -1;
-	if (printclo >= 0) {
-		return printclo;
-	}
-	
-	GET_CODE;
-	
-	int printid = sm_codegen_begin_closure_func (gen);
-	COMMENT("print closure func");
-	COMMENT("create direct closure");
-
-	COMMENT("get string thunk");
-	RUNDBG("-> print closure, sp=%p\n", LOADSP, "i64*");
-	int str = SPGET(0, "%closure*");
-
-	COMMENT("push direct print closure");
-	int direct = create_prim_print (gen);
-	SPSET(0, direct, "%closure*");
-
-	COMMENT("enter string");
-	RUNDBG("enter string %p\n", str, "%closure*");
-	ENTER(str);
-	sm_codegen_end_closure_func (gen);
-
-	COMMENT("create print closure");
-	printclo = sm_codegen_create_custom_closure (gen, 0, printid);
-	return printclo;
 }
 
 static int create_prim_binary (SmCodegen* gen, const char* op) {
@@ -817,16 +616,35 @@ DEFUNC(compile_call_expr, SmCallExpr) {
 
 	int off = sm_codegen_push_update_frame (gen, -1);
 
-	COMMENT("visit func");
-	SmVar func = VISIT(expr->func);
+	const char* prim_name = NULL;
+	if (expr->func->type == SM_MEMBER_EXPR) {
+		SmMemberExpr* member = (SmMemberExpr*) expr->func;
+		if (strstr (member->name, "prim") == member->name) {
+			prim_name = member->name;
+		}
+	}
 
-	int realfunc = create_real_call_closure (gen, expr);
-	FINSP(off, realfunc, "%closure*");
-	
-	COMMENT("force func");
-	RUNDBG("enter %p\n", func.id, "%closure*");
-	ENTER(func.id);
-	
+	if (prim_name) {
+		int prim = LOAD("%%closure** @%s", prim_name);
+		RUNDBG("prim call %p\n", prim, "%closure*");
+
+		FINSP(off, prim, "%closure*");
+
+		// only support one argument for now
+		SmVar arg = VISIT(EXPR(expr->args->pdata[0]));
+		RUNDBG("enter arg %p", arg.id, "%closure*");
+		ENTER(arg.id);
+	} else {
+		COMMENT("visit func");
+		SmVar func = VISIT(expr->func);
+		
+		int realfunc = create_real_call_closure (gen, expr);
+		FINSP(off, realfunc, "%closure*");
+		
+		COMMENT("force func");
+		RUNDBG("enter %p\n", func.id, "%closure*");
+		ENTER(func.id);
+	}		
 	sm_codegen_end_closure_func (gen);
 	
 	// build thunk
@@ -1038,20 +856,16 @@ SmJit* sm_compile (SmCodegenOpts opts, const char* name, SmExpr* expr) {
 	RUNDBG("bottom hp=%p\n", LOADHP, "i64*");	
 
 	int nopclo = create_nop_closure (gen);
-	int printclo = create_print_call (gen);
 	sm_codegen_init_update_frame (gen);
-	
+	sm_prim_print (gen);
+
+	COMMENT("push nop");
 	SPSET(0, nopclo, "%closure*");
 
 	COMMENT("visit root expression");
-	SmVar var = VISIT(expr);
-	COMMENT("push root expression");
-	FINSP(-1, var.id, "%closure*");
-	RUNDBG("root expr %p\n", var.id, "%closure*");
-	RUNDBG("sp=%p\n", LOADSP, "i64*");
-
-	COMMENT("enter print");
-	ENTER(printclo);
+	SmVar root = VISIT(expr);
+	RUNDBG("enter root %p\n", root.id, "%closure*");
+	ENTER(root.id);
 	/* RET("void"); */
 	END_FUNC;
 	POP_BLOCK;

@@ -27,6 +27,25 @@
 #define BREAKPOINT CALL_("void @llvm.debugtrap()")
 #define RUNDBG(f,x,c) sm_codegen_debug(gen, f, x, c)
 
+/* Currently favoring doubles, will change in the future to favor either lists or functions */
+#define DBL_qNAN 0x7FF8000000000000ULL
+#define TAG_MASK 0x7FFF000000000000ULL
+#define OBJ_MASK 0x0000FFFFFFFFFFFFULL
+#define TAG_FUN DBL_qNAN|(1ULL << 48)
+#define TAG_LST DBL_qNAN|(2ULL << 48)
+#define TAG_INT DBL_qNAN|(3ULL << 48)
+#define TAG_CHR DBL_qNAN|(4ULL << 48)
+#define TAG_STR DBL_qNAN|(5ULL << 48) // constant string
+#define TAG_EXC DBL_qNAN|(6ULL << 48) // exception, carries an object
+#define TAG_OBJ DBL_qNAN|(7ULL << 48)
+
+#define OBJ_FALSE (TAG_OBJ)
+#define OBJ_TRUE (TAG_OBJ|(1ULL))
+#define OBJ_EOS (TAG_OBJ|(2ULL))
+
+#define LIST_SIZE 0
+#define LIST_ELEMS 1
+
 #define CLOSURE_FUNC 0
 #define CLOSURE_CACHE 1
 #define CLOSURE_SCOPE 2

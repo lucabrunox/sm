@@ -130,7 +130,7 @@ FUNC(call) {
 	GPtrArray* args = g_ptr_array_new ();
 	NEW(call, SmCallExpr, SM_CALL_EXPR);
 	while (TRUE) {
-		if (!CASE("id") && !CASE("(") && !CASE("[") && !CASE("{")) {
+		if (!CASE("id") && !CASE("str") && !CASE("(") && !CASE("[") && !CASE("{")) {
 			break;
 		}
 		if (CASE("id") && (CASESTR("if") || CASESTR("then") || CASESTR("else"))) {

@@ -28,7 +28,7 @@ void sm_parser_free (SmParser* parser) {
 #define FUNC(n) static SmExpr* n (SmParser* parser)
 #define FUNC2(n,x) static SmExpr* n (SmParser* parser, x)
 #define TYPE (CUR.type)
-#define EXPECT(x) if (!CASE(x)) { printf("expected " x ", got %s\n", TYPE); return NULL; }
+#define EXPECT(x) if (!CASE(x)) { printf("expected " x ", got %s, at %d:%d\n", TYPE, parser->lexer.row, parser->lexer.col); return NULL; }
 #define ACCEPT(x) ((CASE(x)) ? (NEXT, 1) : 0)
 #define ACCEPT_ID(x) ((CASE("id")) ? (!strcmp(STR, x) ? (NEXT, 1) : 0) : 0)
 #define SKIP(x) EXPECT(x); NEXT;
@@ -174,6 +174,7 @@ FUNC(binary) {
 
 		return EXPR(bin);
 	}
+
 	return left;
 }
 
@@ -275,7 +276,7 @@ FUNC(assign) {
 		RESTORE(begin);
 	}
 
-	return cond(parser);
+	return function(parser, TRUE);
 }
 
 FUNC(let) {

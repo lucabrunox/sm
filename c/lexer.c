@@ -14,7 +14,7 @@
 
 void sm_lexer_init (SmLexer* lexer, const char* buf) {
 	lexer->ptr = buf;
-	lexer->row = lexer->col = 0;
+	lexer->row = lexer->col = 1;
 }
 
 void sm_lexer_destroy (SmLexer* lexer) {

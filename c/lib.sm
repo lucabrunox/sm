@@ -3,6 +3,8 @@ foldr = f z s:
 	if eos? x then z
 	else f x (foldr f z ns);
 
+map = f s: foldr (x ns: [f x, ns]) eos s;
+
 printStream = s:
 	x, ns = s;
 	if eos? ns then print x

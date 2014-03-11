@@ -9,17 +9,32 @@
 uint64_t sm_prim_print (uint64_t object) {
 	uint64_t tag = object & TAG_MASK;
 	switch (tag) {
-		case TAG_INT:
-			printf("%d\n", (int)(object & OBJ_MASK));
+	case TAG_INT:
+		printf("%d\n", (int)(object & OBJ_MASK));
+		break;
+	case TAG_STR:
+		printf("%s\n", (const char*)(object & OBJ_MASK));
+		break;
+	case TAG_CHR:
+		printf("%c\n", (char)(object & OBJ_MASK));
+		break;
+	case TAG_OBJ:
+		switch (object) {
+		case OBJ_TRUE:
+			printf("true\n");
 			break;
-		case TAG_STR:
-			printf("%s\n", (const char*)(object & OBJ_MASK));
+		case OBJ_FALSE:
+			printf("false\n");
 			break;
-		case TAG_CHR:
-			printf("%c\n", (char)(object & OBJ_MASK));
-			break;
-		default:
-			printf("(cannot print object with tag: %lx)", tag);
+			case OBJ_EOS:
+				printf("eos\n");
+				break;
+			default:
+				printf("(cannot print object: %lx)", object);
+		}
+		break;
+	default:
+		printf("(cannot print object with tag: %lx)", tag);
 	}
 	
 	return object;

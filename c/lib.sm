@@ -1,6 +1,6 @@
 foldr = f z s:
 	x, ns = s;
-	if eos? x then z
+	if eos? ns then f x eos
 	else f x (foldr f z ns);
 
 map = f s: foldr (x ns: [f x, ns]) eos s;
@@ -10,4 +10,4 @@ printStream = s:
 	if eos? ns then print x
 	else print x >> printStream ns;
 
-printStream [123,[321,eos]]
+printStream (map (x: x>1) [123,[321,eos]])

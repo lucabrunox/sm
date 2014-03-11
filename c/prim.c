@@ -25,6 +25,14 @@ uint64_t sm_prim_print (uint64_t object) {
 	return object;
 }
 
+uint64_t sm_prim_is_eos (uint64_t object) {
+	if (object == OBJ_EOS) {
+		return OBJ_TRUE;
+	} else {
+		return OBJ_FALSE;
+	}
+}
+
 void sm_prim_init_op (SmCodegen* gen, const char* prim_name, const char* prim_func) {
 	GET_CODE;
 	

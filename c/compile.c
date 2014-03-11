@@ -611,6 +611,8 @@ DEFUNC(compile_call_expr, SmCallExpr) {
 		SmMemberExpr* member = (SmMemberExpr*) expr->func;
 		if (!strcmp (member->name, "print")) {
 			prim_name = "primPrint";
+		} else if (!strcmp (member->name, "eos?")) {
+			prim_name = "primIsEos";
 		} else if (strstr (member->name, "prim") == member->name) {
 			prim_name = member->name;
 		}
@@ -852,6 +854,7 @@ SmJit* sm_compile (SmCodegenOpts opts, const char* name, SmExpr* expr) {
 	sm_codegen_init_update_frame (gen);
 	sm_prim_init_eos (gen);
 	sm_prim_init_op (gen, "primPrint", "sm_prim_print");
+	sm_prim_init_op (gen, "primIsEos", "sm_prim_is_eos");
 
 	COMMENT("push nop");
 	SPSET(0, nopclo, "%closure*");

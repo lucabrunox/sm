@@ -25,12 +25,7 @@ uint64_t sm_prim_print (uint64_t object) {
 	return object;
 }
 
-void sm_prim_init (SmCodegen* gen, const char* prim_name, const char* prim_func) {
-	static int closure = -1;
-	if (closure >= 0) {
-		return;
-	}
-	
+void sm_prim_init_op (SmCodegen* gen, const char* prim_name, const char* prim_func) {
 	GET_CODE;
 	
 	int closureid = sm_codegen_begin_closure_func (gen);
@@ -55,6 +50,29 @@ void sm_prim_init (SmCodegen* gen, const char* prim_name, const char* prim_func)
 	DECLARE ("i64 @%s(i64)", prim_func);
 	POP_BLOCK;
 
-	closure = sm_codegen_create_custom_closure (gen, 0, closureid);
+	int closure = sm_codegen_create_custom_closure (gen, 0, closureid);
 	STORE("%%closure* %%%d", "%%closure** @%s", closure, prim_name);
+}
+
+void sm_prim_init_eos (SmCodegen* gen) {
+	GET_CODE;
+	
+	int closureid = sm_codegen_begin_closure_func (gen);
+	COMMENT("eos closure");
+	RUNDBG("-> eos object, sp=%p\n", LOADSP, "i64*");
+	int cont = SPGET(0, "%closure*");
+
+	COMMENT("set eos object on the stack");
+	STORE("i64 %llu", "i64* %%%d", OBJ_EOS, LOADSP);
+	
+	COMMENT("enter cont");
+	ENTER(cont);
+	sm_codegen_end_closure_func (gen);
+
+	PUSH_BLOCK(sm_codegen_get_decls_block (gen));
+	EMIT_ ("@eos = global %%closure* null, align 8");
+	POP_BLOCK;
+
+	int closure = sm_codegen_create_custom_closure (gen, 0, closureid);
+	STORE("%%closure* %%%d", "%%closure** @eos", closure);
 }

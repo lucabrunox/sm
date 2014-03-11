@@ -146,29 +146,6 @@ static int create_false_closure (SmCodegen* gen) {
 	return falseclo;
 }
 
-static int create_eos_closure (SmCodegen* gen) {
-	static int eosclo = -1;
-	if (eosclo >= 0) {
-		return eosclo;
-	}
-
-	GET_CODE;
-	int closureid = sm_codegen_begin_closure_func (gen);
-	COMMENT("eos closure");
-	RUNDBG("-> eos object, sp=%p\n", LOADSP, "i64*");
-	int cont = SPGET(0, "%closure*");
-
-	COMMENT("set eos object on the stack");
-	STORE("i64 %llu", "i64* %%%d", OBJ_EOS, LOADSP);
-	
-	COMMENT("enter cont");
-	ENTER(cont);
-	sm_codegen_end_closure_func (gen);
-	
-	eosclo = sm_codegen_create_closure (gen, closureid, -1);
-	return eosclo;
-}
-
 static int create_prim_binary (SmCodegen* gen, const char* op) {
 	// FIXME: create fixed binary closures
 	
@@ -244,6 +221,7 @@ static int create_prim_cond (SmCodegen* gen) {
 	cond = try_var (gen, condvar, TYPE_BOOL);
 	BR("i1 %%%d, label %%btrue, label %%bfalse", cond);
 
+	int sp = LOADSP;
 	int cont;
 	LABEL("btrue");
 	cont = SPGET(1, "%closure*");
@@ -252,6 +230,7 @@ static int create_prim_cond (SmCodegen* gen) {
 	ENTER(cont);
 
 	LABEL("bfalse");
+	sm_codegen_set_stack_pointer (gen, sp);
 	cont = SPGET(2, "%closure*");
 	VARSP(3);
 	RUNDBG("enter false %p\n", cont, "%closure*");
@@ -280,7 +259,8 @@ DEFUNC(compile_member_expr, SmMemberExpr) {
 	}
 
 	if (!strcmp (expr->name, "eos")) {
-		RETVAL(id=create_eos_closure(gen), isthunk=TRUE, type=TYPE_EOS);
+		int eos = LOAD("%%closure** @eos");
+		RETVAL(id=eos, isthunk=TRUE, type=TYPE_EOS);
 	}
 
 	if (!strcmp (expr->name, "_")) {
@@ -624,7 +604,7 @@ DEFUNC(compile_call_expr, SmCallExpr) {
 	COMMENT("call thunk func");
 	RUNDBG("-> call, sp=%p\n", LOADSP, "i64*");
 
-	int off = sm_codegen_push_update_frame (gen, -1);
+	int off = -1;//sm_codegen_push_update_frame (gen, -1);
 
 	const char* prim_name = NULL;
 	if (expr->func->type == SM_MEMBER_EXPR) {
@@ -718,6 +698,7 @@ DEFUNC(compile_cond_expr, SmCondExpr) {
 
 	int closureid = sm_codegen_begin_closure_func (gen);
 	COMMENT("cond closure func");
+	RUNDBG("-> cond, sp=%p\n", LOADSP, "i64*");
 
 	COMMENT("visit cond");
 	SmVar cond = VISIT(expr->cond);
@@ -762,9 +743,9 @@ DEFUNC(compile_list_expr, SmListExpr) {
 
 	for (int i=0; i < expr->elems->len; i++) {
 		SmExpr* elem = EXPR(expr->elems->pdata[i]);
-		COMMENT("visit element %d\n", i);
+		COMMENT("visit element %d", i);
 		SmVar var = VISIT(elem);
-		COMMENT("assign element %d to list\n", i);
+		COMMENT("assign element %d to list", i);
 		int ptr = GETPTR("%%list* %%%d, i32 0, i32 %d, i32 %d", list, LIST_ELEMS, i);
 		STORE("%%closure* %%%d", "%%closure** %%%d", var.id, ptr);
 	}
@@ -869,7 +850,8 @@ SmJit* sm_compile (SmCodegenOpts opts, const char* name, SmExpr* expr) {
 
 	int nopclo = create_nop_closure (gen);
 	sm_codegen_init_update_frame (gen);
-	sm_prim_init (gen, "primPrint", "sm_prim_print");
+	sm_prim_init_eos (gen);
+	sm_prim_init_op (gen, "primPrint", "sm_prim_print");
 
 	COMMENT("push nop");
 	SPSET(0, nopclo, "%closure*");

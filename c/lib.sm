@@ -1,0 +1,11 @@
+foldr = f z s:
+	x, ns = s;
+	if eos? x then z
+	else f x (foldr f z ns);
+
+printStream = s:
+	x, ns = s;
+	if eos? ns then print x
+	else print x >> printStream ns;
+
+printStream [123,[321,eos]]

@@ -50,6 +50,23 @@
 #define CLOSURE_CACHE 1
 #define CLOSURE_SCOPE 2
 
+typedef enum {
+	TYPE_FUN,
+	TYPE_LST,
+	TYPE_EOS,
+	TYPE_INT,
+	TYPE_CHR,
+	TYPE_STR,
+	TYPE_BOOL,
+	TYPE_UNK // unknown at compile time
+} SmVarType;
+
+typedef struct {
+	int id;
+	int isthunk;
+	SmVarType type;
+} SmVar;
+
 typedef struct {
 	int debug;
 } SmCodegenOpts;
@@ -66,6 +83,8 @@ void sm_codegen_set_scope (SmCodegen* gen, SmScope* scope);
 
 int sm_codegen_get_use_temps (SmCodegen* gen);
 void sm_codegen_set_use_temps (SmCodegen* gen, int use_temps);
+
+int sm_codegen_try_var (SmCodegen* gen, SmVar var, SmVarType type);
 
 int sm_codegen_get_stack_pointer (SmCodegen* gen);
 void sm_codegen_set_stack_pointer (SmCodegen* gen, int x);

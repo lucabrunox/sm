@@ -17,88 +17,7 @@
 #define RETVAL(x,y,z) SmVar _res_var={.x, .y, .z}; return _res_var
 #define VISIT(x) call_compile_table (gen, EXPR(x), -1)
 
-typedef enum {
-	TYPE_FUN,
-	TYPE_LST,
-	TYPE_EOS,
-	TYPE_INT,
-	TYPE_CHR,
-	TYPE_STR,
-	TYPE_BOOL,
-	TYPE_UNK // unknown at compile time
-} SmVarType;
-
-typedef struct {
-	int id;
-	int isthunk;
-	SmVarType type;
-} SmVar;
-
-
 static SmVar call_compile_table (SmCodegen* gen, SmExpr* expr, int prealloc);
-
-static long long unsigned int tagmap[] = {
-	[TYPE_FUN] = TAG_FUN,
-	[TYPE_LST] = TAG_LST,
-	[TYPE_EOS] = TAG_OBJ,
-	[TYPE_INT] = TAG_INT,
-	[TYPE_CHR] = TAG_CHR,
-	[TYPE_STR] = TAG_STR,
-	[TYPE_BOOL] = TAG_OBJ
-};
-
-int try_var (SmCodegen* gen, SmVar var, SmVarType type) {
-	GET_CODE;
-	COMMENT("try %%%d, expect %d", var.id, type);
-	
-	int object = var.id;
-	RUNDBG("try var %p\n", object, NULL);
-	if (var.type != TYPE_UNK) {
-		if (var.type != type) {
-			printf ("compile-time expected %d, got %d\n", type, var.type);
-			exit(0);
-		} else {
-			return object;
-		}
-	} else {
-		int tag = EMIT("and %%tagged %%%d, %llu", object, TAG_MASK);
-		int faillabel = sm_code_get_label (code);
-		int ok = sm_code_get_label (code);
-		SWITCH("%%tagged %%%d", "label %%fail%d", "i64 %llu, label %%ok%d", tag, faillabel, tagmap[type], ok);
-
-		static int consttmp = -1;
-		static const char* str = "runtime expected %llu, got %llu\n";
-		int len = strlen(str)+1;
-		if (consttmp < 0) {
-			PUSH_BLOCK(sm_codegen_get_decls_block (gen));
-			consttmp = sm_code_get_temp (code);
-			EMIT_ ("@.const%d = private constant [%d x i8] c\"%s\\00\", align 8", consttmp, len, str);
-			POP_BLOCK;
-		}
-		
-		LABEL("fail%d", faillabel);
-		int strptr = BITCAST("[%d x i8]* @.const%d", "i8*", len, consttmp);
-		CALL ("i32 (i8*, ...)* @printf(i8* %%%d, i64 %llu, i64 %%%d)", strptr, tagmap[type], tag);
-		RET("void");
-
-		LABEL("ok%d", ok);
-		object = EMIT("and %%tagged %%%d, %llu", object, OBJ_MASK);
-		/* object = EMIT("shl nuw %%tagged %%%d, 3", object); */
-		if (type == TYPE_STR) {
-			object = TOPTR("%%tagged %%%d", "i8*", object);
-		} else if (type == TYPE_FUN) {
-			object = TOPTR("%%tagged %%%d", "%%closure*", object);
-		} else if (type == TYPE_INT || type == TYPE_EOS) {
-		} else if (type == TYPE_BOOL) {
-			object = EMIT("trunc i64 %%%d to i1", object);
-		} else if (type == TYPE_LST) {
-			object = TOPTR("%%tagged %%%d", "%%list*", object);
-		} else {
-			assert(FALSE);
-		}
-		return object;
-	}
-}
 
 static int create_true_closure (SmCodegen* gen) {
 	static int trueclo = -1;
@@ -182,8 +101,8 @@ static int create_prim_binary (SmCodegen* gen, const char* op) {
 			left = EMIT("and i64 %%%d, %llu", left, OBJ_MASK);
 			right = EMIT("and i64 %%%d, %llu", right, OBJ_MASK);
 		} else {
-			left = try_var (gen, leftvar, TYPE_INT);
-			right = try_var (gen, rightvar, TYPE_INT);
+			left = sm_codegen_try_var (gen, leftvar, TYPE_INT);
+			right = sm_codegen_try_var (gen, rightvar, TYPE_INT);
 		}
 		
 		int result = EMIT("icmp %s i64 %%%d, %%%d", cmp, left, right);
@@ -199,47 +118,7 @@ static int create_prim_binary (SmCodegen* gen, const char* op) {
 	sm_codegen_end_closure_func (gen);
 
 	COMMENT("create binary prim for %s", op);
-	int closure = sm_codegen_create_closure (gen, closureid, -1);
-	return closure;
-}
-
-static int create_prim_cond (SmCodegen* gen) {
-	static int closure = -1;
-	if (closure >= 0) {
-		return closure;
-	}
-	
-	GET_CODE;
-	
-	int closureid = sm_codegen_begin_closure_func (gen);
-	COMMENT("prim cond func");
-	RUNDBG("-> prim cond, sp=%p\n", LOADSP, "i64*");
-
-	int cond = SPGET(0, NULL);
-
-	SmVar condvar = { .id=cond, .isthunk=FALSE, .type=TYPE_UNK };
-	cond = try_var (gen, condvar, TYPE_BOOL);
-	BR("i1 %%%d, label %%btrue, label %%bfalse", cond);
-
-	int sp = LOADSP;
-	int cont;
-	LABEL("btrue");
-	cont = SPGET(1, "%closure*");
-	VARSP(3);
-	RUNDBG("enter true %p\n", cont, "%closure*");
-	ENTER(cont);
-
-	LABEL("bfalse");
-	sm_codegen_set_stack_pointer (gen, sp);
-	cont = SPGET(2, "%closure*");
-	VARSP(3);
-	RUNDBG("enter false %p\n", cont, "%closure*");
-	ENTER(cont);
-	
-	sm_codegen_end_closure_func (gen);
-
-	COMMENT("create cond prim");
-	closure = sm_codegen_create_custom_closure (gen, 0, closureid);
+	int closure = sm_codegen_create_custom_closure (gen, 0, closureid);
 	return closure;
 }
 
@@ -308,7 +187,7 @@ static int create_list_at_closure (SmCodegen* gen, int pos) {
 	RUNDBG("-> list at func, sp=%p\n", LOADSP, "i64*");
 	int list = SPGET(0, NULL);
 	SmVar var = { .id=list, .isthunk=FALSE, .type=TYPE_UNK };
-	list = try_var (gen, var, TYPE_LST);
+	list = sm_codegen_try_var (gen, var, TYPE_LST);
 
 	COMMENT("get element at pos %d", pos);
 	int elem = GETPTR("%%list* %%%d, i32 0, i32 %d, i32 %d", list, LIST_ELEMS, pos);
@@ -575,7 +454,7 @@ static int create_real_call_closure (SmCodegen* gen, SmCallExpr* expr) {
 	int func = SPGET(0, NULL);
 
 	SmVar funcvar = { .id=func, .isthunk=FALSE, .type=TYPE_UNK };
-	func = try_var (gen, funcvar, TYPE_FUN);
+	func = sm_codegen_try_var (gen, funcvar, TYPE_FUN);
 
 	COMMENT("set arguments");
 	for (int i=0; i < expr->args->len; i++) {
@@ -710,7 +589,7 @@ DEFUNC(compile_cond_expr, SmCondExpr) {
 	SmVar falsebody = VISIT(expr->falsebody);
 
 	COMMENT("create prim cond closure");
-	int prim = create_prim_cond (gen);
+	int prim = LOAD("%%closure** @cond");
 	SPSET(-1, falsebody.id, "%closure*");
 	SPSET(-2, truebody.id, "%closure*");
 	FINSP(-3, prim, "%closure*");
@@ -853,6 +732,7 @@ SmJit* sm_compile (SmCodegenOpts opts, const char* name, SmExpr* expr) {
 	int nopclo = create_nop_closure (gen);
 	sm_codegen_init_update_frame (gen);
 	sm_prim_init_eos (gen);
+	sm_prim_init_cond (gen);
 	sm_prim_init_op (gen, "primPrint", "sm_prim_print");
 	sm_prim_init_op (gen, "primIsEos", "sm_prim_is_eos");
 
@@ -868,7 +748,7 @@ SmJit* sm_compile (SmCodegenOpts opts, const char* name, SmExpr* expr) {
 	POP_BLOCK;
 
 	char* unit = sm_code_link (code);
-	/* puts(unit); */
+	puts(unit);
 	sm_code_unref (code);
 	
 	SmJit* mod = sm_jit_compile ("<stdin>", unit);

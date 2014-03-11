@@ -211,33 +211,32 @@ FUNC2(function, int allow_let) {
 		GPtrArray* params = g_ptr_array_new_with_free_func ((GDestroyNotify) g_free);
 		while (CASE("id")) {
 			g_ptr_array_add (params, identifier(parser));
-			if (ACCEPT(":")) {
-				SmExpr* body;
-				if (allow_let) {
-					body = let(parser);
-				} else {
-					body = cond(parser);
-				}
-				CHECK(body);
-				if (body->type != SM_LET_EXPR) {
-					// create a let expr because it's easier at compile time
-					NEW(let, SmLetExpr, SM_LET_EXPR);
-					let->assigns = g_ptr_array_new ();
-					let->result = body;
-					body->parent = EXPR(let);
-					body = EXPR(let);
-				}
-				
-				NEW(expr, SmFuncExpr, SM_FUNC_EXPR);
-				expr->params = params;
-				expr->body = body;
-				body->parent = EXPR(expr);
-				return EXPR(expr);
+		}
+		if (ACCEPT(":")) {
+			SmExpr* body;
+			if (allow_let) {
+				body = let(parser);
 			} else {
-				g_ptr_array_unref (params);
-				RESTORE(begin);
-				break;
+				body = cond(parser);
 			}
+			CHECK(body);
+			if (body->type != SM_LET_EXPR) {
+				// create a let expr because it's easier at compile time
+				NEW(let, SmLetExpr, SM_LET_EXPR);
+				let->assigns = g_ptr_array_new ();
+				let->result = body;
+				body->parent = EXPR(let);
+				body = EXPR(let);
+			}
+			
+			NEW(expr, SmFuncExpr, SM_FUNC_EXPR);
+			expr->params = params;
+			expr->body = body;
+			body->parent = EXPR(expr);
+			return EXPR(expr);
+		} else {
+			g_ptr_array_unref (params);
+			RESTORE(begin);
 		}
 	}
 

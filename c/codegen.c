@@ -226,7 +226,7 @@ int sm_codegen_create_custom_closure (SmCodegen* gen, int scope_size, int closur
 	int closure = LOADHP;
 	closure = BITCAST("i64* %%%d", "%%closure*", closure);
 
-	COMMENT("store update function");
+	COMMENT("store function");
 	int funcptr = GETPTR("%%closure* %%%d, i32 0, i32 %d", closure, CLOSURE_FUNC);
 	STORE("%%closurefunc " FUNC("closure_%d_eval"), "%%closurefunc* %%%d", closureid, funcptr);
 
@@ -390,4 +390,67 @@ void sm_codegen_debug (SmCodegen* gen, const char* fmt, int var, const char* cas
 
 void sm_codegen_set_scope (SmCodegen* gen, SmScope* scope) {
 	gen->scope = scope;
+}
+
+static long long unsigned int tagmap[] = {
+	[TYPE_FUN] = TAG_FUN,
+	[TYPE_LST] = TAG_LST,
+	[TYPE_EOS] = TAG_OBJ,
+	[TYPE_INT] = TAG_INT,
+	[TYPE_CHR] = TAG_CHR,
+	[TYPE_STR] = TAG_STR,
+	[TYPE_BOOL] = TAG_OBJ
+};
+
+int sm_codegen_try_var (SmCodegen* gen, SmVar var, SmVarType type) {
+	GET_CODE;
+	COMMENT("try %%%d, expect %d", var.id, type);
+	
+	int object = var.id;
+	RUNDBG("try var %p\n", object, NULL);
+	if (var.type != TYPE_UNK) {
+		if (var.type != type) {
+			printf ("compile-time expected %d, got %d\n", type, var.type);
+			exit(0);
+		} else {
+			return object;
+		}
+	} else {
+		int tag = EMIT("and %%tagged %%%d, %llu", object, TAG_MASK);
+		int faillabel = sm_code_get_label (code);
+		int ok = sm_code_get_label (code);
+		SWITCH("%%tagged %%%d", "label %%fail%d", "i64 %llu, label %%ok%d", tag, faillabel, tagmap[type], ok);
+
+		static int consttmp = -1;
+		static const char* str = "runtime expected %llu, got %llu\n";
+		int len = strlen(str)+1;
+		if (consttmp < 0) {
+			PUSH_BLOCK(sm_codegen_get_decls_block (gen));
+			consttmp = sm_code_get_temp (code);
+			EMIT_ ("@.const%d = private constant [%d x i8] c\"%s\\00\", align 8", consttmp, len, str);
+			POP_BLOCK;
+		}
+		
+		LABEL("fail%d", faillabel);
+		int strptr = BITCAST("[%d x i8]* @.const%d", "i8*", len, consttmp);
+		CALL ("i32 (i8*, ...)* @printf(i8* %%%d, i64 %llu, i64 %%%d)", strptr, tagmap[type], tag);
+		RET("void");
+
+		LABEL("ok%d", ok);
+		object = EMIT("and %%tagged %%%d, %llu", object, OBJ_MASK);
+		/* object = EMIT("shl nuw %%tagged %%%d, 3", object); */
+		if (type == TYPE_STR) {
+			object = TOPTR("%%tagged %%%d", "i8*", object);
+		} else if (type == TYPE_FUN) {
+			object = TOPTR("%%tagged %%%d", "%%closure*", object);
+		} else if (type == TYPE_INT || type == TYPE_EOS) {
+		} else if (type == TYPE_BOOL) {
+			object = EMIT("trunc i64 %%%d to i1", object);
+		} else if (type == TYPE_LST) {
+			object = TOPTR("%%tagged %%%d", "%%list*", object);
+		} else {
+			assert(FALSE);
+		}
+		return object;
+	}
 }

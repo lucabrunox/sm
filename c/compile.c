@@ -97,10 +97,7 @@ static int create_prim_binary (SmCodegen* gen, const char* op) {
 		
 		SmVar leftvar = { .id=left, .isthunk=FALSE, .type=TYPE_UNK };
 		SmVar rightvar = { .id=right, .isthunk=FALSE, .type=TYPE_UNK };
-		if (CASE("==") || CASE("!=")) {
-			left = EMIT("and i64 %%%d, %llu", left, OBJ_MASK);
-			right = EMIT("and i64 %%%d, %llu", right, OBJ_MASK);
-		} else {
+		if (!CASE("==") && !CASE("!=")) {
 			left = sm_codegen_try_var (gen, leftvar, TYPE_INT);
 			right = sm_codegen_try_var (gen, rightvar, TYPE_INT);
 		}
@@ -157,24 +154,17 @@ DEFUNC(compile_member_expr, SmMemberExpr) {
 
 	RUNDBG(g_strdup_printf("-> member %s, sp=%%p\n", expr->name), LOADSP, "i64*");
 	int obj;
-	if (sm_codegen_get_use_temps (gen)) {
-		if (varid < parent_size) {
-			COMMENT("member %s(%d) from closure", expr->name, varid);
-			// 0 = closure param
-			int objptr = GETPTR("%%closure* %%0, i32 0, i32 %d, i32 %d", CLOSURE_SCOPE, varid);
-			obj = LOAD("%%closure** %%%d", objptr);
-			RUNDBG("use temps, closure member %p\n", obj, "%closure*");
-		} else {
-			// from the stack
-			COMMENT("member %s(%d) from stack", expr->name, varid);
-			obj = SPGET(varid-parent_size, "%closure*");
-			RUNDBG("stack member %p\n", obj, "%closure*");
-		}
-	} else {
+	if (!sm_codegen_get_use_temps (gen) || varid < parent_size) {
+		COMMENT("member %s(%d) from closure", expr->name, varid);
 		// 0 = closure param
 		int objptr = GETPTR("%%closure* %%0, i32 0, i32 %d, i32 %d", CLOSURE_SCOPE, varid);
 		obj = LOAD("%%closure** %%%d", objptr);
-		RUNDBG("no temps, closure member %p\n", obj, "%closure*");
+		RUNDBG("use temps, closure member %p\n", obj, "%closure*");
+	} else {
+		// from the stack
+		COMMENT("member %s(%d) from stack", expr->name, varid-parent_size);
+		obj = SPGET(varid-parent_size, "%closure*");
+		RUNDBG("stack member %p\n", obj, "%closure*");
 	}
 	RETVAL(id=obj, isthunk=TRUE, type=TYPE_UNK);
 }
@@ -247,12 +237,16 @@ DEFUNC(compile_let_expr, SmLetExpr) {
 	sm_codegen_set_use_temps (gen, TRUE);
 	COMMENT("let/func closure");
 	RUNDBG("-> let, sp=%p\n", LOADSP, "i64*");
-	
+
+	VARSP(-expr->nlocals);
+
 	int nlocals = 0;
 	/* assign ids to locals and preallocate thunks */
 	/* as a big lazy hack, keep track of the number of temporaries that we use to allocate a closure */
+	int start_alloc = -1;
 	int cur_alloc = 0;
 	int temp_diff = 0;
+	int parent_size = sm_scope_get_size (sm_scope_get_parent (scope));
 	for (int i=0; i < expr->assigns->len; i++) {
 		SmAssignExpr* assign = (SmAssignExpr*) expr->assigns->pdata[i];
 		for (int j=0; j < assign->names->len; j++) {
@@ -270,9 +264,12 @@ DEFUNC(compile_let_expr, SmLetExpr) {
 			int alloc = sm_codegen_allocate_closure (gen);
 			temp_diff = alloc-cur_alloc;
 			cur_alloc = alloc;
-			SPSET(-nlocals-1, alloc, "%closure*");
+			if (start_alloc < 0) {
+				start_alloc = cur_alloc;
+			}
+			SPSET(nlocals, alloc, "%closure*");
 
-			sm_scope_set (scope, name, nlocals++);
+			sm_scope_set (scope, name, parent_size+nlocals++);
 		}
 	}
 
@@ -286,11 +283,10 @@ DEFUNC(compile_let_expr, SmLetExpr) {
 			exit(0);
 		}
 
-		sm_scope_set (scope, name, nlocals+i);
+		sm_scope_set (scope, name, parent_size+nlocals+i);
 	}
 	
 	// make room for locals
-	VARSP(-nlocals);
 
 	/* visit assignments */
 	for (int i=0; i < expr->assigns->len; i++) {
@@ -299,9 +295,9 @@ DEFUNC(compile_let_expr, SmLetExpr) {
 		if (names->len == 1) {
 			const char* name = (const char*) names->pdata[0];
 			COMMENT("assign for %s(%d)", name, i);
-			RUNDBG("assign %p\n", cur_alloc, "%closure*");
-			(void) call_compile_table (gen, EXPR(assign->value), cur_alloc);
-			cur_alloc -= temp_diff;
+			RUNDBG("assign %p\n", start_alloc, "%closure*");
+			(void) call_compile_table (gen, EXPR(assign->value), start_alloc);
+			start_alloc += temp_diff;
 		} else {
 			SmVar var = VISIT(assign->value);
 			for (int j=0; j < names->len; j++) {
@@ -310,9 +306,9 @@ DEFUNC(compile_let_expr, SmLetExpr) {
 					continue;
 				}
 				
-				RUNDBG("assign match %p\n", cur_alloc, "%closure*");
-				create_match_closure (gen, cur_alloc, var.id, j);
-				cur_alloc -= temp_diff;
+				RUNDBG("assign match %p\n", start_alloc, "%closure*");
+				create_match_closure (gen, start_alloc, var.id, j);
+				start_alloc += temp_diff;
 			}
 		}
 	}

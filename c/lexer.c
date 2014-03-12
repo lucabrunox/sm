@@ -31,8 +31,8 @@ SmToken sm_lexer_next (SmLexer* lexer) {
 	}
 
 	while (c == '#') {
-		while (PEEK != '\n') READ;
-		while (isspace (PEEK)) READ;
+		while (PEEK && PEEK != '\n') READ;
+		while (PEEK && isspace (PEEK)) READ;
 		c = PEEK;
 	}
 	if (!c) {

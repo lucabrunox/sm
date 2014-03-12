@@ -8,6 +8,7 @@
 
 uint64_t sm_prim_print (uint64_t object) {
 	uint64_t tag = object & TAG_MASK;
+	uint64_t* list;
 	switch (tag) {
 	case TAG_INT:
 		printf("%d\n", (int)(object & OBJ_MASK));
@@ -17,6 +18,10 @@ uint64_t sm_prim_print (uint64_t object) {
 		break;
 	case TAG_CHR:
 		printf("%c\n", (char)(object & OBJ_MASK));
+		break;
+	case TAG_LST:
+		list = (uint64_t*)(object & OBJ_MASK);
+		printf("[%lu]\n", list[0]);
 		break;
 	case TAG_OBJ:
 		switch (object) {

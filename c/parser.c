@@ -289,6 +289,8 @@ FUNC(let) {
 	NEW(let, SmLetExpr, SM_LET_EXPR);
 	let->assigns = g_ptr_array_new ();
 	while (ACCEPT(";")) {
+		SmAssignExpr* a = (SmAssignExpr*) expr;
+		let->nlocals += a->names->len;
 		g_ptr_array_add (let->assigns, expr);
 
 		expr = assign(parser);

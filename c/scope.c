@@ -48,7 +48,7 @@ int sm_scope_lookup (SmScope* scope, const char* name) {
 	while (scope) {
 		int64_t id;
 		if (g_hash_table_lookup_extended (scope->map, (gpointer)name, NULL, (gpointer*)&id)) {
-			return sm_scope_get_size (scope->parent)+id;
+			return id;
 		}
 		scope = scope->parent;
 	}

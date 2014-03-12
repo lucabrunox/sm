@@ -47,6 +47,7 @@ typedef struct _SmAssignList SmAssignList;
 typedef struct {
 	SmExpr base;
 	GPtrArray* assigns;
+	int nlocals;
 	SmExpr* result;
 } SmLetExpr;
 
